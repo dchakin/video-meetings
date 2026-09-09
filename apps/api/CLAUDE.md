@@ -16,7 +16,7 @@
 
 ```
 src/
-  main.ts            — bootstrap, слушает PORT (по умолчанию 4000)
+  main.ts            — bootstrap, CORS (env WEB_ORIGIN), слушает PORT (по умолчанию 4000)
   app.module.ts      — корневой модуль: ConfigModule (global), PrismaModule, AuthModule, MeetingModule, глобальный ValidationPipe через APP_PIPE
   app.controller.ts  — GET / → AppService.getHello()
   app.service.ts
@@ -72,6 +72,7 @@ nest-cli.json        — sourceRoot: src, deleteOutDir: true
 - Порт — `PORT` (по умолчанию 4000). Пример env — `.env.example`.
 - Подключение к БД — `DATABASE_URL` (PostgreSQL из корневого `docker-compose.yml`, сервис `db`). По умолчанию `postgresql://video_meetings:video_meetings@localhost:5432/video_meetings`. Поднять БД — `npm run db:up` из корня. Prisma CLI читает `DATABASE_URL` из `apps/api/.env` (у Prisma Client в рантайме `.env` подхватывает `@nestjs/config`).
 - JWT — `JWT_SECRET` (по умолчанию `dev-secret-change-me`) и `JWT_EXPIRES_IN` (по умолчанию `1d`).
+- CORS — `WEB_ORIGIN` (по умолчанию `http://localhost:3000`): список разрешённых origin фронтенда через запятую, включается в `main.ts` через `app.enableCors()`.
 
 ## CQRS (модуль `auth`)
 
