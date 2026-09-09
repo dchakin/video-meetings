@@ -13,13 +13,21 @@
 
 ```
 app/
-  app.vue              — корневой компонент, обёрнут в <UApp>
-  assets/css/main.css  — глобальные стили / точка входа Tailwind
+  app.vue              — корневой компонент: <UApp> + <NuxtPage />
+  app.config.ts        — тема Nuxt UI (ui.colors: primary=blue, neutral=slate)
+  pages/               — файловый роутинг (index, register, login)
+  components/           — auto-import компоненты (AuthBackdrop — фон страниц auth)
+  composables/         — auto-import композаблы (useAuth — клиент API auth, JWT в cookie access_token)
+  assets/css/main.css  — глобальные стили / точка входа Tailwind + @theme (шрифты, --ui-radius)
 nuxt.config.ts         — конфиг Nuxt
 eslint.config.mjs      — конфиг из @nuxt/eslint + общий base (только для JS/TS, не для *.vue)
 ```
 
-Каталог `srcDir` — `app/` (структура Nuxt 4). Автогенерация — в `.nuxt/`, сборка — в `.output/`.
+Каталог `srcDir` — `app/` (структура Nuxt 4). Наличие `app/pages/` включает `vue-router` (в `app.vue` — `<NuxtPage />`). Автогенерация — в `.nuxt/`, сборка — в `.output/`.
+
+Иконки — коллекция `@iconify-json/lucide` (bundled локально, `i-lucide-*`).
+Шрифты — `Inter` (`--font-sans`) и `Manrope` (`--font-display`, класс `font-display` для заголовков), self-hosted через `@nuxt/fonts` (идёт с `@nuxt/ui`).
+Палитра — синяя: `primary` = `blue` в `app.config.ts`; в компонентах использовать семантические цвета/классы Nuxt UI (`text-primary`, `bg-default`, …), не сырые оттенки Tailwind.
 
 ## Команды
 

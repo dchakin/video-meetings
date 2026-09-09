@@ -8,9 +8,6 @@ useHead({
 
 <template>
   <UApp>
-    <UContainer class="py-16">
-      <h1 class="text-2xl font-bold">video-meetings · web</h1>
-      <p class="mt-2 text-muted">Nuxt 4 + Nuxt UI приложение инициализировано.</p>
-    </UContainer>
+    <NuxtPage />
   </UApp>
 </template>
