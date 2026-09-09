@@ -37,3 +37,7 @@ yarn-error.log*
 # claude code skills (устанавливаются локально)
 .agents/skills/
 .claude/skills/
+
+# playwright mcp (артефакты прогонов)
+.playwright-mcp/
+*-mcp.png
