@@ -18,6 +18,7 @@ app/
   pages/               — файловый роутинг (index, register, login)
   components/           — auto-import компоненты (AuthBackdrop — фон страниц auth)
   composables/         — auto-import композаблы (useAuth — клиент API auth, JWT в cookie access_token)
+  middleware/          — маршрутные middleware (guest — уводит авторизованного с /login и /register на /)
   assets/css/main.css  — глобальные стили / точка входа Tailwind + @theme (шрифты, --ui-radius)
 nuxt.config.ts         — конфиг Nuxt
 eslint.config.mjs      — конфиг из @nuxt/eslint + общий base (только для JS/TS, не для *.vue)
