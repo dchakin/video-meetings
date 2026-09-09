@@ -1,0 +1,13 @@
+# Nuxt
+.nuxt
+.output
+.data
+.nitro
+.cache
+dist
+
+# misc
+*.tsbuildinfo
+
+# env
+.env

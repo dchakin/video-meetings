@@ -1,0 +1,48 @@
+# CLAUDE.md — apps/web
+
+Фронтенд `@video-meetings/web`. Указания для Claude Code внутри этого воркспейса.
+
+## Стек
+
+- **Nuxt 4** (`compatibilityDate: 2025-01-01`), Vue 3, `vue-router`.
+- **Nuxt UI** (`@nuxt/ui`, см. версию в `package.json`) + Tailwind через `~/assets/css/main.css`.
+- Модули Nuxt: `@nuxt/eslint`, `@nuxt/ui`.
+- TypeScript, тип модулей — ESM (`"type": "module"`).
+
+## Структура
+
+```
+app/
+  app.vue              — корневой компонент, обёрнут в <UApp>
+  assets/css/main.css  — глобальные стили / точка входа Tailwind
+nuxt.config.ts         — конфиг Nuxt
+eslint.config.mjs      — конфиг из @nuxt/eslint + общий base (только для JS/TS, не для *.vue)
+```
+
+Каталог `srcDir` — `app/` (структура Nuxt 4). Автогенерация — в `.nuxt/`, сборка — в `.output/`.
+
+## Команды
+
+| Команда                     | Действие                   |
+| --------------------------- | -------------------------- |
+| `npm run dev`               | Dev-сервер на `:3000`      |
+| `npm run build`             | `nuxt build` → `.output/`  |
+| `npm run start`             | `nuxt preview` на `:3000`  |
+| `npm run generate`          | Статическая генерация      |
+| `npm run lint` / `lint:fix` | ESLint                     |
+| `npm run typecheck`         | `nuxt typecheck` (vue-tsc) |
+
+`postinstall` вызывает `nuxt prepare` — он генерирует `.nuxt/tsconfig.json` и `.nuxt/eslint.config.mjs`, от которых зависят `tsconfig.json` и `eslint.config.mjs`. После смены зависимостей/конфига запускать `nuxt prepare` (или `npm install`).
+
+## Конфигурация
+
+- `runtimeConfig.public.apiBase` ← `NUXT_PUBLIC_API_BASE` (по умолчанию `http://localhost:4000`).
+- Пример env — `.env.example`.
+
+## Соглашения
+
+- Не редактировать `.nuxt/**`, `.output/**` — они генерируются.
+- UI строить на компонентах Nuxt UI (`U*`); доступна skill `nuxt-ui` в `.agents/skills/`.
+- `tsconfig.json` только расширяет `./.nuxt/tsconfig.json` — реальные настройки задаёт Nuxt.
+- Тесты пока не настроены.
+- При изменении архитектуры воркспейса (структура `app/`, модули Nuxt, стек, команды, env) обновляй этот файл и, если нужно, корневой `CLAUDE.md` / `README.md` в том же изменении. См. раздел «Поддержка документации» в корневом `CLAUDE.md`.

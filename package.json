@@ -1,0 +1,36 @@
+{
+  "name": "video-meetings",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Монорепозиторий: Nuxt 4 (apps/web) + Nest.js (apps/api)",
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "dev": "concurrently -n web,api -c blue,green \"npm:dev:web\" \"npm:dev:api\"",
+    "dev:web": "npm run dev -w @video-meetings/web",
+    "dev:api": "npm run dev -w @video-meetings/api",
+    "build": "npm run build --workspaces --if-present",
+    "build:web": "npm run build -w @video-meetings/web",
+    "build:api": "npm run build -w @video-meetings/api",
+    "start": "concurrently -n web,api -c blue,green \"npm:start:web\" \"npm:start:api\"",
+    "start:web": "npm run start -w @video-meetings/web",
+    "start:api": "npm run start:prod -w @video-meetings/api",
+    "lint": "npm run lint --workspaces --if-present",
+    "lint:fix": "npm run lint:fix --workspaces --if-present",
+    "typecheck": "npm run typecheck --workspaces --if-present",
+    "test": "npm run test --workspaces --if-present",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "clean": "npm run clean --workspaces --if-present && rimraf node_modules"
+  },
+  "devDependencies": {
+    "concurrently": "^9.1.0",
+    "prettier": "^3.4.2",
+    "rimraf": "^6.0.1"
+  }
+}

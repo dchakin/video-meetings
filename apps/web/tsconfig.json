@@ -1,0 +1,4 @@
+{
+  "//": "Реальные настройки генерирует Nuxt в .nuxt/tsconfig.json (nuxt prepare).",
+  "extends": "./.nuxt/tsconfig.json"
+}

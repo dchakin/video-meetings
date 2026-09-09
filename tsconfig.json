@@ -1,0 +1,9 @@
+{
+  "//": "Корневой конфиг нужен только редакторам. Реальные настройки — в apps/*/tsconfig.json и packages/tsconfig.",
+  "extends": "@video-meetings/tsconfig/base.json",
+  "compilerOptions": {
+    "noEmit": true
+  },
+  "include": [],
+  "exclude": ["node_modules", "**/dist", "**/.nuxt", "**/.output"]
+}
