@@ -9,7 +9,7 @@
 ```
 apps/
   web/   — фронтенд: Nuxt 4 + Nuxt UI (TypeScript, ESM)
-  api/   — бэкенд: Nest.js 11 (TypeScript, CommonJS)
+  api/   — бэкенд: Nest.js 11 + Prisma 6 (PostgreSQL), JWT-аутентификация (CQRS, @nestjs/cqrs) (TypeScript, CommonJS)
 packages/
   eslint-config/ — общий flat-конфиг ESLint (@video-meetings/eslint-config, экспорт ./base)
   tsconfig/      — общие tsconfig (@video-meetings/tsconfig: base.json / nestjs.json)
@@ -19,15 +19,16 @@ packages/
 
 ## Команды (из корня)
 
-| Команда                           | Действие                                      |
-| --------------------------------- | --------------------------------------------- |
-| `npm run dev`                     | Параллельно web (`:3000`) и api (`:4000`)     |
-| `npm run dev:web` / `dev:api`     | Только один воркспейс                         |
-| `npm run build`                   | Сборка всех воркспейсов (`--if-present`)      |
-| `npm run lint` / `lint:fix`       | ESLint по всем воркспейсам                    |
-| `npm run typecheck`               | Проверка типов по всем воркспейсам            |
-| `npm run test`                    | Тесты по всем воркспейсам (сейчас только api) |
-| `npm run format` / `format:check` | Prettier по всему репозиторию                 |
+| Команда                                 | Действие                                      |
+| --------------------------------------- | --------------------------------------------- |
+| `npm run dev`                           | Параллельно web (`:3000`) и api (`:4000`)     |
+| `npm run dev:web` / `dev:api`           | Только один воркспейс                         |
+| `npm run build`                         | Сборка всех воркспейсов (`--if-present`)      |
+| `npm run lint` / `lint:fix`             | ESLint по всем воркспейсам                    |
+| `npm run typecheck`                     | Проверка типов по всем воркспейсам            |
+| `npm run test`                          | Тесты по всем воркспейсам (сейчас только api) |
+| `npm run format` / `format:check`       | Prettier по всему репозиторию                 |
+| `npm run db:up` / `db:down` / `db:logs` | PostgreSQL в Docker Compose (сервис `db`)     |
 
 Для одного воркспейса: `npm run <script> -w @video-meetings/web` (или `@video-meetings/api`).
 
@@ -36,6 +37,14 @@ packages/
 ```bash
 npm install
 ```
+
+## База данных
+
+PostgreSQL 17 в контейнере — `docker-compose.yml`, сервис `db`, порт `5432`, том `db-data`.
+Параметры (`POSTGRES_USER` / `POSTGRES_PASSWORD` / `POSTGRES_DB` / `POSTGRES_PORT`) — в корневом `.env` (пример — `.env.example`).
+Строка подключения для api — `DATABASE_URL` в `apps/api/.env` (пример — `apps/api/.env.example`).
+
+Доступ к БД в api — через **Prisma 6**. Схема и миграции — `apps/api/prisma/`. После `npm run db:up` применить миграции: `npm run prisma:migrate -w @video-meetings/api` (в CI/проде — `prisma:deploy`). Клиент генерируется командой `npm run prisma:generate -w @video-meetings/api`.
 
 ## Соглашения
 
