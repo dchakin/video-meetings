@@ -66,3 +66,13 @@ npm run prisma:migrate -w @video-meetings/api   # применит миграц�
 | `npm run db:logs`      | Логи контейнера БД                                      |
 
 Для отдельного воркспейса: `npm run <script> -w @video-meetings/web`.
+
+## Тесты
+
+```bash
+npm run test                              # unit-тесты (Jest); сейчас только api
+npm run test:e2e -w @video-meetings/api   # e2e api через supertest
+```
+
+e2e поднимают приложение и работают с реальной БД — перед запуском нужны `npm run db:up`
+и применённые миграции (`npm run prisma:migrate -w @video-meetings/api`). У web тесты пока не настроены.

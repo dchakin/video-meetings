@@ -19,18 +19,25 @@ packages/
 
 ## Команды (из корня)
 
-| Команда                                 | Действие                                      |
-| --------------------------------------- | --------------------------------------------- |
-| `npm run dev`                           | Параллельно web (`:3000`) и api (`:4000`)     |
-| `npm run dev:web` / `dev:api`           | Только один воркспейс                         |
-| `npm run build`                         | Сборка всех воркспейсов (`--if-present`)      |
-| `npm run lint` / `lint:fix`             | ESLint по всем воркспейсам                    |
-| `npm run typecheck`                     | Проверка типов по всем воркспейсам            |
-| `npm run test`                          | Тесты по всем воркспейсам (сейчас только api) |
-| `npm run format` / `format:check`       | Prettier по всему репозиторию                 |
-| `npm run db:up` / `db:down` / `db:logs` | PostgreSQL в Docker Compose (сервис `db`)     |
+| Команда                                 | Действие                                             |
+| --------------------------------------- | ---------------------------------------------------- |
+| `npm run dev`                           | Параллельно web (`:3000`) и api (`:4000`)            |
+| `npm run dev:web` / `dev:api`           | Только один воркспейс                                |
+| `npm run build`                         | Сборка всех воркспейсов (`--if-present`)             |
+| `npm run lint` / `lint:fix`             | ESLint по всем воркспейсам                           |
+| `npm run typecheck`                     | Проверка типов по всем воркспейсам                   |
+| `npm run test`                          | Тесты по всем воркспейсам (сейчас только api — unit) |
+| `npm run format` / `format:check`       | Prettier по всему репозиторию                        |
+| `npm run db:up` / `db:down` / `db:logs` | PostgreSQL в Docker Compose (сервис `db`)            |
 
 Для одного воркспейса: `npm run <script> -w @video-meetings/web` (или `@video-meetings/api`).
+
+### Тесты
+
+- `npm run test` из корня — unit-тесты api (Jest). У web тесты пока не настроены.
+- e2e api — `npm run test:e2e -w @video-meetings/api`; поднимают приложение и ходят в реальную БД,
+  поэтому нужны `npm run db:up` и применённые миграции (`npm run prisma:migrate -w @video-meetings/api`).
+- Подробности (наборы, запуск одного файла/кейса, требования) — `apps/api/CLAUDE.md`, раздел «Тесты».
 
 ## Установка зависимостей
 

@@ -82,6 +82,39 @@ nest-cli.json        — sourceRoot: src, deleteOutDir: true
 - JWT — `JWT_SECRET` (по умолчанию `dev-secret-change-me`) и `JWT_EXPIRES_IN` (по умолчанию `1d`).
 - CORS — `WEB_ORIGIN` (по умолчанию `http://localhost:3000`): список разрешённых origin фронтенда через запятую, включается в `main.ts` через `app.enableCors()`.
 
+## Тесты
+
+Jest + ts-jest. Два набора:
+
+| Набор    | Где                     | Конфиг                                        | Что проверяет                                                                  |
+| -------- | ----------------------- | --------------------------------------------- | ------------------------------------------------------------------------------ |
+| **unit** | `src/**/*.spec.ts`      | блок `jest` в `package.json` (`rootDir: src`) | классы в изоляции, без сети и БД                                               |
+| **e2e**  | `test/**/*.e2e-spec.ts` | `test/jest-e2e.json`                          | поднимают всё приложение (`AppModule`) через `supertest` и ходят в реальную БД |
+
+Запуск (из `apps/api/`, либо из корня — `npm run <script> -w @video-meetings/api`):
+
+```bash
+npm test                 # unit, разово
+npm run test:watch       # unit в watch-режиме
+npm run test:cov         # unit + покрытие (в ./coverage)
+npm run test:e2e         # e2e
+```
+
+**e2e требуют БД.** Перед первым прогоном (из корня репозитория):
+
+```bash
+npm run db:up                                  # PostgreSQL в Docker
+npm run prisma:migrate -w @video-meetings/api  # применить миграции
+```
+
+Тесты создают пользователей/встречи с уникальными email на каждый прогон и за собой не убирают —
+это ожидаемо, данные живут в dev-БД. `JWT_SECRET` / `JWT_EXPIRES_IN` берутся из `apps/api/.env`
+(при отсутствии — дефолты из кода).
+
+Один файл или один кейс: `npm test -- auth` (по подстроке пути), `npm run test:e2e -- -t "returns a JWT"` (по имени `it`/`describe`).
+
+Перед коммитом изменений в api прогонять оба набора и убеждаться, что они зелёные.
+
 ## CQRS (модули `auth` и `users`)
 
 `auth` и `users` реализованы по паттерну **CQRS** через `@nestjs/cqrs` (`CqrsModule` в `imports` каждого).
@@ -138,6 +171,6 @@ HTTP → AuthController → CommandBus.execute(new LoginCommand(...)) → LoginH
 - Новые фичи — модулями Nest: `<feature>.module.ts` / `.controller.ts` / `.service.ts`, регистрировать в `imports` родительского модуля. CQRS применяют `auth` и `users`; остальные модули (напр. `meeting`) — обычный controller + service. Детали паттерна — раздел «CQRS (модули `auth` и `users`)».
 - Межмодульное взаимодействие с `users` — только через `CommandBus` / `QueryBus` (`CreateUserCommand`, `FindUserByEmailQuery`); `users` не экспортирует провайдеров, прямые импорты его сервисов запрещены.
 - Защита роутов — `JwtAuthGuard` из `auth` (`@UseGuards(JwtAuthGuard)` на контроллере); текущего пользователя брать через `@CurrentUser()`. Модуль, которому нужен guard, импортирует `AuthModule`.
-- Unit-тесты класть рядом с кодом как `*.spec.ts`.
+- Unit-тесты класть рядом с кодом как `*.spec.ts`; e2e — в `test/` как `*.e2e-spec.ts`. Как запускать — раздел «Тесты».
 - Общие правила ESLint — в `packages/eslint-config`; общий tsconfig — в `packages/tsconfig/nestjs.json`.
 - При изменении архитектуры воркспейса (структура `src/`, набор модулей, стек, команды, env) обновляй этот файл и, если нужно, корневой `CLAUDE.md` / `README.md` в том же изменении. См. раздел «Поддержка документации» в корневом `CLAUDE.md`.
