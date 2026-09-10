@@ -60,6 +60,7 @@ PostgreSQL 17 в контейнере — `docker-compose.yml`, сервис `db
 - Форматирование — Prettier (`.prettierrc.json`), не конфликтует с ESLint (`eslint-config-prettier`). После каждого `Write`/`Edit` Claude Code автоматически прогоняет Prettier по изменённому файлу (хук `PostToolUse` → `.claude/hooks/format-changed-file.mjs`).
 - `.npmrc`: `engine-strict=true`, `save-exact=false`.
 - Перед коммитом прогонять `npm run lint` и `npm run typecheck`.
+- **Git-хуки — Husky** (`.husky/`, инициализируется скриптом `prepare` при `npm install`). `pre-commit` прогоняет `npm run lint`, `npm run test` (unit по всем воркспейсам) и `npm run test:e2e -w @video-meetings/api` (e2e api); коммит не проходит, если что-то падает. E2e требуют поднятой БД и применённых миграций (`npm run db:up` + `npm run prisma:migrate -w @video-meetings/api`). Пропустить проверку разово — `git commit --no-verify`.
 
 ## Поддержка документации
 
