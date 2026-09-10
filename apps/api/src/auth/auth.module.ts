@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { CqrsModule } from '@nestjs/cqrs';
 import { JwtModule, JwtSignOptions } from '@nestjs/jwt';
+import { UsersModule } from '../users/users.module';
 import { AuthController } from './auth.controller';
 import { AUTH_COMMAND_HANDLERS } from './commands';
 import { JwtAuthGuard } from './guards/jwt-auth.guard';
@@ -10,6 +11,7 @@ import { TokenService } from './tokens/token.service';
 @Module({
   imports: [
     CqrsModule,
+    UsersModule,
     JwtModule.registerAsync({
       imports: [ConfigModule],
       inject: [ConfigService],
