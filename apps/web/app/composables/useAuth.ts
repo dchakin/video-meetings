@@ -8,6 +8,32 @@ export interface AuthCredentials {
   password: string;
 }
 
+/** Данные пользователя, извлечённые из payload JWT. */
+export interface AuthUser {
+  sub: string;
+  email: string;
+}
+
+/** Декодирует payload JWT (`header.payload.signature`) без проверки подписи. */
+function decodeToken(token: string | null): AuthUser | null {
+  if (!token) return null;
+
+  const segment = token.split('.')[1];
+  if (!segment) return null;
+
+  try {
+    const json = atob(segment.replace(/-/g, '+').replace(/_/g, '/'));
+    const payload = JSON.parse(json) as Partial<AuthUser>;
+
+    if (typeof payload.sub === 'string' && typeof payload.email === 'string') {
+      return { sub: payload.sub, email: payload.email };
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
+
 /**
  * Клиент аутентификации: обращается к API (`runtimeConfig.public.apiBase`)
  * и хранит JWT в cookie `access_token`.
@@ -21,6 +47,7 @@ export function useAuth() {
   });
 
   const isAuthenticated = computed(() => Boolean(token.value));
+  const user = computed(() => decodeToken(token.value));
 
   async function request(path: '/auth/register' | '/auth/login', body: AuthCredentials) {
     const result = await $fetch<AuthResult>(path, {
@@ -39,5 +66,5 @@ export function useAuth() {
     token.value = null;
   }
 
-  return { token, isAuthenticated, register, login, logout };
+  return { token, user, isAuthenticated, register, login, logout };
 }
