@@ -34,9 +34,9 @@ yarn-error.log*
 .vscode/*
 !.vscode/extensions.json
 
-# claude code skills (устанавливаются локально)
-.agents/skills/
-.claude/skills/
+# python (артефакты скриптов скиллов)
+__pycache__/
+*.pyc
 
 # playwright mcp (артефакты прогонов)
 .playwright-mcp/
