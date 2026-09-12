@@ -1,5 +1,6 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { Meeting } from '@prisma/client';
+import { JwtPayload } from '../auth/auth.types';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateMeetingDto } from './dto/create-meeting.dto';
 
@@ -25,9 +26,12 @@ export class MeetingService {
     });
   }
 
-  async findOneByOwner(ownerId: string, id: string): Promise<Meeting> {
-    const meeting = await this.prisma.meeting.findFirst({ where: { id, ownerId } });
-    if (!meeting) {
+  /** Владелец и участники (сверка по email) видят встречу; для остальных — 404, как в meeting-file. */
+  async findOneForMember(user: JwtPayload, id: string): Promise<Meeting> {
+    const meeting = await this.prisma.meeting.findUnique({ where: { id } });
+    const isMember =
+      meeting && (meeting.ownerId === user.sub || meeting.participants.includes(user.email));
+    if (!isMember) {
       throw new NotFoundException('Встреча не найдена');
     }
     return meeting;

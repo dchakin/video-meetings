@@ -23,6 +23,6 @@ export class MeetingController {
 
   @Get(':id')
   findOne(@CurrentUser() user: JwtPayload, @Param('id') id: string): Promise<Meeting> {
-    return this.meetings.findOneByOwner(user.sub, id);
+    return this.meetings.findOneForMember(user, id);
   }
 }

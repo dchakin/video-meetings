@@ -46,7 +46,7 @@ src/
   meeting/             — обычный модуль Nest (controller + service), защищён `JwtAuthGuard`
     meeting.module.ts     — импортирует AuthModule (ради JwtAuthGuard/JwtModule)
     meeting.controller.ts — POST /meetings, GET /meetings, GET /meetings/:id; все под `@UseGuards(JwtAuthGuard)`
-    meeting.service.ts    — CRUD через Prisma, встречи скоупятся по `ownerId` (404 на чужую/отсутствующую)
+    meeting.service.ts    — CRUD через Prisma; список и создание скоупятся по `ownerId`, получение одной встречи (`findOneForMember`) доступно владельцу и участникам (сверка по email из JwtPayload, как в meeting-file) — 404 на недоступную/отсутствующую
     dto/create-meeting.dto.ts — { title, date (ISO), participants: string[] }, правила class-validator
   meeting-file/        — обычный модуль Nest (controller + service), защищён `JwtAuthGuard`
     meeting-file.module.ts     — импортирует AuthModule
