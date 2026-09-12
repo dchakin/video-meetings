@@ -88,15 +88,26 @@ async function uploadFile(file: File | undefined) {
   uploadProgress.value = 0;
   try {
     await upload(file, (percent) => (uploadProgress.value = percent));
-    await refreshFiles();
   } catch (error) {
     if (error instanceof MeetingFileUploadError && error.statusCode === 413) {
       uploadError.value = 'Файл слишком большой. Выберите файл меньшего размера.';
     } else {
       uploadError.value = 'Не удалось загрузить файл. Проверьте соединение и попробуйте ещё раз.';
     }
-  } finally {
     isUploading.value = false;
+    return;
+  }
+  isUploading.value = false;
+
+  try {
+    await refreshFiles();
+  } catch {
+    toast.add({
+      title: 'Файл загружен, но список не обновился',
+      description: 'Обновите страницу, чтобы увидеть его.',
+      color: 'warning',
+      icon: 'i-lucide-triangle-alert',
+    });
   }
 }
 
@@ -108,6 +119,7 @@ function onFileInputChange(event: Event) {
 
 function onDrop(event: DragEvent) {
   isDraggingOver.value = false;
+  if (isUploading.value) return;
   void uploadFile(event.dataTransfer?.files?.[0]);
 }
 
@@ -115,7 +127,6 @@ async function onRemove(file: MeetingFile) {
   deletingId.value = file.id;
   try {
     await remove(file);
-    await refreshFiles();
   } catch {
     toast.add({
       title: 'Не удалось удалить файл',
@@ -123,8 +134,20 @@ async function onRemove(file: MeetingFile) {
       color: 'error',
       icon: 'i-lucide-circle-alert',
     });
-  } finally {
     deletingId.value = null;
+    return;
+  }
+  deletingId.value = null;
+
+  try {
+    await refreshFiles();
+  } catch {
+    toast.add({
+      title: 'Файл удалён, но список не обновился',
+      description: 'Обновите страницу, чтобы увидеть изменения.',
+      color: 'warning',
+      icon: 'i-lucide-triangle-alert',
+    });
   }
 }
 </script>

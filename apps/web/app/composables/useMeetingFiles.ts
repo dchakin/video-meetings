@@ -23,7 +23,7 @@ export class MeetingFileUploadError extends Error {
 export function useMeetingFiles(meetingId: string) {
   const api = useApi();
   const config = useRuntimeConfig();
-  const { token } = useAuth();
+  const { token, logout } = useAuth();
 
   const list = () => api<MeetingFile[]>(`/meetings/${meetingId}/files`);
 
@@ -69,10 +69,19 @@ export function useMeetingFiles(meetingId: string) {
 
       xhr.addEventListener('load', () => {
         if (xhr.status >= 200 && xhr.status < 300) {
-          resolve(JSON.parse(xhr.responseText) as MeetingFile);
-        } else {
-          reject(new MeetingFileUploadError(`Upload failed with status ${xhr.status}`, xhr.status));
+          try {
+            resolve(JSON.parse(xhr.responseText) as MeetingFile);
+          } catch {
+            reject(new MeetingFileUploadError('Malformed response body'));
+          }
+          return;
         }
+
+        if (xhr.status === 401) {
+          logout();
+          void navigateTo('/login');
+        }
+        reject(new MeetingFileUploadError(`Upload failed with status ${xhr.status}`, xhr.status));
       });
 
       xhr.addEventListener('error', () => {
