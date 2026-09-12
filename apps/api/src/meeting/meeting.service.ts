@@ -3,6 +3,7 @@ import { Meeting } from '@prisma/client';
 import { JwtPayload } from '../auth/auth.types';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateMeetingDto } from './dto/create-meeting.dto';
+import { isMeetingMember } from './meeting-membership';
 
 @Injectable()
 export class MeetingService {
@@ -29,9 +30,7 @@ export class MeetingService {
   /** Владелец и участники (сверка по email) видят встречу; для остальных — 404, как в meeting-file. */
   async findOneForMember(user: JwtPayload, id: string): Promise<Meeting> {
     const meeting = await this.prisma.meeting.findUnique({ where: { id } });
-    const isMember =
-      meeting && (meeting.ownerId === user.sub || meeting.participants.includes(user.email));
-    if (!isMember) {
+    if (!meeting || !isMeetingMember(meeting, user)) {
       throw new NotFoundException('Встреча не найдена');
     }
     return meeting;

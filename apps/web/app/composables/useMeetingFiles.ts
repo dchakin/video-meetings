@@ -20,12 +20,15 @@ export function useMeetingFiles(meetingId: string) {
       responseType: 'blob',
     });
     const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = file.fileName;
+    link.style.display = 'none';
+    document.body.appendChild(link);
     try {
-      const link = document.createElement('a');
-      link.href = url;
-      link.download = file.fileName;
       link.click();
     } finally {
+      link.remove();
       URL.revokeObjectURL(url);
     }
   }

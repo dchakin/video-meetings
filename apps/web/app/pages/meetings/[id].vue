@@ -11,12 +11,20 @@ const { user } = useAuth();
 const { get } = useMeetings();
 const { list, download } = useMeetingFiles(meetingId);
 
+// Запросы стартуют одновременно — await Promise.all ждёт оба, а не один за другим.
+const meetingAsync = useAsyncData(`meeting-${meetingId}`, () => get(meetingId));
+const filesAsync = useAsyncData(`meeting-${meetingId}-files`, () => list(), {
+  default: () => [],
+});
+await Promise.all([meetingAsync, filesAsync]);
+
 const {
   data: meeting,
   pending: meetingPending,
   error: meetingError,
   refresh: refreshMeeting,
-} = await useAsyncData(`meeting-${meetingId}`, () => get(meetingId));
+} = meetingAsync;
+const { data: files, pending: filesPending, error: filesError, refresh: refreshFiles } = filesAsync;
 
 /** 404 — встречи нет или нет доступа; любой другой сбой — сетевая/серверная ошибка. */
 const meetingNotFound = computed(
@@ -26,15 +34,6 @@ const meetingNotFound = computed(
 useHead({ title: () => meeting.value?.title ?? 'Встреча' });
 
 const isOwner = computed(() => Boolean(meeting.value && meeting.value.ownerId === user.value?.sub));
-
-const {
-  data: files,
-  pending: filesPending,
-  error: filesError,
-  refresh: refreshFiles,
-} = await useAsyncData(`meeting-${meetingId}-files`, () => list(), {
-  default: () => [],
-});
 
 const dateLabel = computed(() =>
   meeting.value
