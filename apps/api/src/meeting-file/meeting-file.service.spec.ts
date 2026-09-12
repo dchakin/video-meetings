@@ -98,6 +98,26 @@ describe('MeetingFileService', () => {
       expect(fs.unlink).toHaveBeenCalledWith(file.storagePath);
     });
 
+    it('игнорирует отсутствие файла на диске (ENOENT)', async () => {
+      prisma.meeting.findUnique.mockResolvedValue(meeting);
+      prisma.meetingFile.findFirst.mockResolvedValue(file);
+      prisma.meetingFile.delete.mockResolvedValue(file);
+      const enoent = Object.assign(new Error('missing'), { code: 'ENOENT' });
+      (fs.unlink as jest.Mock).mockRejectedValue(enoent);
+
+      await expect(service.deleteAsOwner(owner, meeting.id, file.id)).resolves.toBeUndefined();
+    });
+
+    it('пробрасывает ошибку удаления файла с диска, если это не ENOENT', async () => {
+      prisma.meeting.findUnique.mockResolvedValue(meeting);
+      prisma.meetingFile.findFirst.mockResolvedValue(file);
+      prisma.meetingFile.delete.mockResolvedValue(file);
+      const eacces = Object.assign(new Error('permission denied'), { code: 'EACCES' });
+      (fs.unlink as jest.Mock).mockRejectedValue(eacces);
+
+      await expect(service.deleteAsOwner(owner, meeting.id, file.id)).rejects.toThrow(eacces);
+    });
+
     it('не-владельцу — 404, ничего не удаляется', async () => {
       prisma.meeting.findUnique.mockResolvedValue(meeting);
 

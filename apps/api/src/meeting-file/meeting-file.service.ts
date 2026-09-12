@@ -23,10 +23,7 @@ export class MeetingFileService {
       throw new BadRequestException('Файл не передан');
     }
 
-    const meeting = await this.getMeetingOrThrow(meetingId);
-    if (meeting.ownerId !== user.sub) {
-      throw new NotFoundException('Встреча не найдена');
-    }
+    await this.getMeetingForOwnerOrThrow(user, meetingId);
 
     await fs.mkdir(this.storageDir, { recursive: true });
     const storedName = `${randomUUID()}${path.extname(file.originalname)}`;
@@ -70,15 +67,15 @@ export class MeetingFileService {
   }
 
   async deleteAsOwner(user: JwtPayload, meetingId: string, fileId: string): Promise<void> {
-    const meeting = await this.getMeetingOrThrow(meetingId);
-    if (meeting.ownerId !== user.sub) {
-      // Скрываем существование встречи/файла от тех, кто не вправе удалять — как и upload.
-      throw new NotFoundException('Файл не найден');
-    }
+    await this.getMeetingForOwnerOrThrow(user, meetingId);
     const file = await this.getFileOrThrow(meetingId, fileId);
 
     await this.prisma.meetingFile.delete({ where: { id: file.id } });
-    await fs.unlink(file.storagePath).catch(() => undefined);
+    await fs.unlink(file.storagePath).catch((error: NodeJS.ErrnoException) => {
+      if (error.code !== 'ENOENT') {
+        throw error;
+      }
+    });
   }
 
   private async getFileOrThrow(meetingId: string, fileId: string): Promise<MeetingFile> {
@@ -87,6 +84,15 @@ export class MeetingFileService {
       throw new NotFoundException('Файл не найден');
     }
     return file;
+  }
+
+  private async getMeetingForOwnerOrThrow(user: JwtPayload, meetingId: string): Promise<Meeting> {
+    const meeting = await this.getMeetingOrThrow(meetingId);
+    if (meeting.ownerId !== user.sub) {
+      // Скрываем существование встречи от тех, кто не вправе ей управлять — как и upload/delete.
+      throw new NotFoundException('Встреча не найдена');
+    }
+    return meeting;
   }
 
   private async getMeetingOrThrow(meetingId: string): Promise<Meeting> {
