@@ -50,8 +50,8 @@ src/
     dto/create-meeting.dto.ts — { title, date (ISO), participants: string[] }, правила class-validator
   meeting-file/        — обычный модуль Nest (controller + service), защищён `JwtAuthGuard`
     meeting-file.module.ts     — импортирует AuthModule
-    meeting-file.controller.ts — POST /meetings/:meetingId/files (multipart, поле `file`, `FileInterceptor` с лимитом `FILE_MAX_SIZE_BYTES`), GET /meetings/:meetingId/files; под `@UseGuards(JwtAuthGuard)`
-    meeting-file.service.ts    — только владелец встречи может загружать; список файлов виден владельцу и участникам (сверка по email из JwtPayload); недоступная/чужая встреча → 404 (как в `meeting`). Файл читается в память (multer memory storage — лимит размера отклоняет запрос до записи на диск), затем пишется в `FILE_STORAGE_DIR` под случайным именем (`randomUUID` + исходное расширение) и фиксируется в таблице `MeetingFile`
+    meeting-file.controller.ts — POST /meetings/:meetingId/files (multipart, поле `file`, `FileInterceptor` с лимитом `FILE_MAX_SIZE_BYTES`), GET /meetings/:meetingId/files, GET /meetings/:meetingId/files/:fileId/download (побайтовая отдача через `StreamableFile`), DELETE /meetings/:meetingId/files/:fileId (204 No Content); под `@UseGuards(JwtAuthGuard)`
+    meeting-file.service.ts    — только владелец встречи может загружать и удалять; список файлов и скачивание доступны владельцу и участникам (сверка по email из JwtPayload); недоступная/чужая встреча, чужой файл или недостающие права на удаление → 404 (как в `meeting`, скрывает существование). Файл читается в память (multer memory storage — лимит размера отклоняет запрос до записи на диск), затем пишется в `FILE_STORAGE_DIR` под случайным именем (`randomUUID` + исходное расширение) и фиксируется в таблице `MeetingFile`; удаление стирает запись в БД и файл с диска (`fs.unlink`, ошибка отсутствия файла игнорируется)
     file-storage.config.ts     — `getFileStorageDir()` / `getFileMaxSizeBytes()`, читают `FILE_STORAGE_DIR` / `FILE_MAX_SIZE_BYTES` из `process.env`
     meeting-file.types.ts      — `MeetingFileResponse` — публичная форма файла без внутреннего `storagePath`
   *.spec.ts          — unit-тесты рядом с кодом
@@ -182,6 +182,6 @@ HTTP → AuthController → CommandBus.execute(new LoginCommand(...)) → LoginH
 - Общие правила ESLint — в `packages/eslint-config`; общий tsconfig — в `packages/tsconfig/nestjs.json`.
 - При изменении архитектуры воркспейса (структура `src/`, набор модулей, стек, команды, env) обновляй этот файл и, если нужно, корневой `CLAUDE.md` / `README.md` в том же изменении. См. раздел «Поддержка документации» в корневом `CLAUDE.md`.
 
-
 ## File upload
+
 Use this research for it: @docs/research-meeting-file-upload-and-display.md
