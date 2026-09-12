@@ -48,12 +48,18 @@ src/
     meeting.controller.ts — POST /meetings, GET /meetings, GET /meetings/:id; все под `@UseGuards(JwtAuthGuard)`
     meeting.service.ts    — CRUD через Prisma, встречи скоупятся по `ownerId` (404 на чужую/отсутствующую)
     dto/create-meeting.dto.ts — { title, date (ISO), participants: string[] }, правила class-validator
+  meeting-file/        — обычный модуль Nest (controller + service), защищён `JwtAuthGuard`
+    meeting-file.module.ts     — импортирует AuthModule
+    meeting-file.controller.ts — POST /meetings/:meetingId/files (multipart, поле `file`, `FileInterceptor` с лимитом `FILE_MAX_SIZE_BYTES`), GET /meetings/:meetingId/files; под `@UseGuards(JwtAuthGuard)`
+    meeting-file.service.ts    — только владелец встречи может загружать; список файлов виден владельцу и участникам (сверка по email из JwtPayload); недоступная/чужая встреча → 404 (как в `meeting`). Файл читается в память (multer memory storage — лимит размера отклоняет запрос до записи на диск), затем пишется в `FILE_STORAGE_DIR` под случайным именем (`randomUUID` + исходное расширение) и фиксируется в таблице `MeetingFile`
+    file-storage.config.ts     — `getFileStorageDir()` / `getFileMaxSizeBytes()`, читают `FILE_STORAGE_DIR` / `FILE_MAX_SIZE_BYTES` из `process.env`
+    meeting-file.types.ts      — `MeetingFileResponse` — публичная форма файла без внутреннего `storagePath`
   *.spec.ts          — unit-тесты рядом с кодом
 prisma/
-  schema.prisma      — datasource (env DATABASE_URL) + модели User, Meeting (owner → User)
+  schema.prisma      — datasource (env DATABASE_URL) + модели User, Meeting (owner → User), MeetingFile (meeting → Meeting, uploadedBy → User)
   migrations/        — SQL-миграции Prisma
 test/
-  app.e2e-spec.ts, auth.e2e-spec.ts, meeting.e2e-spec.ts, jest-e2e.json
+  app.e2e-spec.ts, auth.e2e-spec.ts, meeting.e2e-spec.ts, meeting-file.e2e-spec.ts, jest-e2e.json
 nest-cli.json        — sourceRoot: src, deleteOutDir: true
 ```
 
@@ -81,6 +87,7 @@ nest-cli.json        — sourceRoot: src, deleteOutDir: true
 - Подключение к БД — `DATABASE_URL` (PostgreSQL из корневого `docker-compose.yml`, сервис `db`). По умолчанию `postgresql://video_meetings:video_meetings@localhost:5432/video_meetings`. Поднять БД — `npm run db:up` из корня. Prisma CLI читает `DATABASE_URL` из `apps/api/.env` (у Prisma Client в рантайме `.env` подхватывает `@nestjs/config`).
 - JWT — `JWT_SECRET` (по умолчанию `dev-secret-change-me`) и `JWT_EXPIRES_IN` (по умолчанию `1d`).
 - CORS — `WEB_ORIGIN` (по умолчанию `http://localhost:3000`): список разрешённых origin фронтенда через запятую, включается в `main.ts` через `app.enableCors()`.
+- Файлы встреч — `FILE_STORAGE_DIR` (по умолчанию `storage/meeting-files`, путь относительно `process.cwd()` — вне `dist`, не коммитится, см. `.gitignore`) и `FILE_MAX_SIZE_BYTES` (по умолчанию `10485760`, 10 MB).
 
 ## Тесты
 
@@ -168,7 +175,7 @@ HTTP → AuthController → CommandBus.execute(new LoginCommand(...)) → LoginH
 ## Соглашения
 
 - Не редактировать `dist/**` — генерируется, чистится при каждой сборке.
-- Новые фичи — модулями Nest: `<feature>.module.ts` / `.controller.ts` / `.service.ts`, регистрировать в `imports` родительского модуля. CQRS применяют `auth` и `users`; остальные модули (напр. `meeting`) — обычный controller + service. Детали паттерна — раздел «CQRS (модули `auth` и `users`)».
+- Новые фичи — модулями Nest: `<feature>.module.ts` / `.controller.ts` / `.service.ts`, регистрировать в `imports` родительского модуля. CQRS применяют `auth` и `users`; остальные модули (напр. `meeting`, `meeting-file`) — обычный controller + service. Детали паттерна — раздел «CQRS (модули `auth` и `users`)».
 - Межмодульное взаимодействие с `users` — только через `CommandBus` / `QueryBus` (`CreateUserCommand`, `FindUserByEmailQuery`); `users` не экспортирует провайдеров, прямые импорты его сервисов запрещены.
 - Защита роутов — `JwtAuthGuard` из `auth` (`@UseGuards(JwtAuthGuard)` на контроллере); текущего пользователя брать через `@CurrentUser()`. Модуль, которому нужен guard, импортирует `AuthModule`.
 - Unit-тесты класть рядом с кодом как `*.spec.ts`; e2e — в `test/` как `*.e2e-spec.ts`. Как запускать — раздел «Тесты».
