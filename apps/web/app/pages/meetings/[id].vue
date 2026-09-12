@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import type { FetchError } from 'ofetch';
-import type { MeetingFile } from '~/composables/useMeetingFiles';
+import { MeetingFileUploadError, type MeetingFile } from '~/composables/useMeetingFiles';
 
 definePageMeta({ middleware: 'auth' });
 
@@ -9,7 +9,7 @@ const meetingId = route.params.id as string;
 
 const { user } = useAuth();
 const { get } = useMeetings();
-const { list, download } = useMeetingFiles(meetingId);
+const { list, download, upload, remove } = useMeetingFiles(meetingId);
 
 // Запросы стартуют одновременно — await Promise.all ждёт оба, а не один за другим.
 const meetingAsync = useAsyncData(`meeting-${meetingId}`, () => get(meetingId));
@@ -63,6 +63,91 @@ async function onDownload(file: MeetingFile) {
     });
   } finally {
     downloadingId.value = null;
+  }
+}
+
+const fileInput = ref<HTMLInputElement>();
+const isDraggingOver = ref(false);
+const isUploading = ref(false);
+const uploadProgress = ref(0);
+const uploadError = ref<string | null>(null);
+const deletingId = ref<string | null>(null);
+
+function openFilePicker() {
+  fileInput.value?.click();
+}
+
+async function uploadFile(file: File | undefined) {
+  uploadError.value = null;
+  if (!file) {
+    uploadError.value = 'Файл не выбран.';
+    return;
+  }
+
+  isUploading.value = true;
+  uploadProgress.value = 0;
+  try {
+    await upload(file, (percent) => (uploadProgress.value = percent));
+  } catch (error) {
+    if (error instanceof MeetingFileUploadError && error.statusCode === 413) {
+      uploadError.value = 'Файл слишком большой. Выберите файл меньшего размера.';
+    } else {
+      uploadError.value = 'Не удалось загрузить файл. Проверьте соединение и попробуйте ещё раз.';
+    }
+    isUploading.value = false;
+    return;
+  }
+  isUploading.value = false;
+
+  try {
+    await refreshFiles();
+  } catch {
+    toast.add({
+      title: 'Файл загружен, но список не обновился',
+      description: 'Обновите страницу, чтобы увидеть его.',
+      color: 'warning',
+      icon: 'i-lucide-triangle-alert',
+    });
+  }
+}
+
+function onFileInputChange(event: Event) {
+  const input = event.target as HTMLInputElement;
+  void uploadFile(input.files?.[0]);
+  input.value = '';
+}
+
+function onDrop(event: DragEvent) {
+  isDraggingOver.value = false;
+  if (isUploading.value) return;
+  void uploadFile(event.dataTransfer?.files?.[0]);
+}
+
+async function onRemove(file: MeetingFile) {
+  deletingId.value = file.id;
+  try {
+    await remove(file);
+  } catch {
+    toast.add({
+      title: 'Не удалось удалить файл',
+      description: 'Проверьте соединение и попробуйте ещё раз.',
+      color: 'error',
+      icon: 'i-lucide-circle-alert',
+    });
+    deletingId.value = null;
+    return;
+  }
+  deletingId.value = null;
+
+  try {
+    await refreshFiles();
+  } catch {
+    toast.add({
+      title: 'Файл удалён, но список не обновился',
+      description: 'Обновите страницу, чтобы увидеть изменения.',
+      color: 'warning',
+      icon: 'i-lucide-triangle-alert',
+    });
   }
 }
 </script>
@@ -122,10 +207,55 @@ async function onDownload(file: MeetingFile) {
             icon="i-lucide-upload"
             label="Загрузить файл"
             size="sm"
-            disabled
-            title="Загрузка файлов появится в следующем обновлении"
+            :loading="isUploading"
+            @click="openFilePicker"
           />
         </div>
+
+        <input
+          v-if="isOwner"
+          ref="fileInput"
+          type="file"
+          class="hidden"
+          @change="onFileInputChange"
+        >
+
+        <div
+          v-if="isOwner"
+          class="mt-4 flex flex-col items-center justify-center rounded-xl border-2 border-dashed px-6 py-8 text-center transition-colors"
+          :class="isDraggingOver ? 'border-primary bg-primary/5' : 'border-default'"
+          @dragover.prevent="isDraggingOver = true"
+          @dragleave.prevent="isDraggingOver = false"
+          @drop.prevent="onDrop"
+        >
+          <UIcon name="i-lucide-upload-cloud" class="size-6 text-muted" />
+          <p class="mt-2 text-sm text-muted">
+            Перетащите файл сюда или
+            <UButton
+              variant="link"
+              size="sm"
+              class="px-1"
+              label="выберите на устройстве"
+              :disabled="isUploading"
+              @click="openFilePicker"
+            />
+          </p>
+
+          <div v-if="isUploading" class="mt-3 w-full max-w-xs">
+            <UProgress :model-value="uploadProgress" size="sm" />
+            <p class="mt-1 text-xs text-muted">Загрузка… {{ uploadProgress }}%</p>
+          </div>
+        </div>
+
+        <UAlert
+          v-if="uploadError"
+          class="mt-4"
+          color="error"
+          variant="subtle"
+          icon="i-lucide-circle-alert"
+          :title="uploadError"
+          :close="{ onClick: () => (uploadError = null) }"
+        />
 
         <UAlert
           v-if="filesError"
@@ -163,7 +293,10 @@ async function onDownload(file: MeetingFile) {
           v-else
           :files="files"
           :downloading="downloadingId"
+          :deletable="isOwner"
+          :deleting="deletingId"
           @download="onDownload"
+          @remove="onRemove"
         />
       </section>
     </template>
