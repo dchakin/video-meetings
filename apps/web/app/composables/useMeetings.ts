@@ -23,8 +23,10 @@ export function useMeetings() {
   /** Все встречи владельца, API отдаёт их отсортированными по `createdAt` убыв. */
   const list = () => api<Meeting[]>('/meetings');
 
+  const get = (id: string) => api<Meeting>(`/meetings/${id}`);
+
   const create = (payload: CreateMeetingPayload) =>
     api<Meeting>('/meetings', { method: 'POST', body: payload });
 
-  return { list, create };
+  return { list, get, create };
 }

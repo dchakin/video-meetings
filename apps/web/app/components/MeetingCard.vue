@@ -23,7 +23,8 @@ const participantsLabel = computed(() => {
 </script>
 
 <template>
-  <div
+  <NuxtLink
+    :to="`/meetings/${meeting.id}`"
     class="flex h-full flex-col rounded-xl border border-default bg-elevated/40 p-4 transition-colors hover:border-primary/50"
   >
     <div class="flex items-start justify-between gap-3">
@@ -43,5 +44,5 @@ const participantsLabel = computed(() => {
       <UIcon name="i-lucide-users" class="size-3.5 shrink-0" />
       <span>{{ participantsLabel }}</span>
     </p>
-  </div>
+  </NuxtLink>
 </template>
