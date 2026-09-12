@@ -7,3 +7,6 @@
 
 # env
 .env
+
+# загруженные пользователями файлы (см. FILE_STORAGE_DIR)
+/storage
