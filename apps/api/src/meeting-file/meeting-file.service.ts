@@ -9,6 +9,16 @@ import { PrismaService } from '../prisma/prisma.service';
 import { getFileStorageDir } from './file-storage.config';
 import { MeetingFileResponse } from './meeting-file.types';
 
+/**
+ * `busboy` (используется `multer`) декодирует поле `filename` в multipart-запросе как
+ * latin1 независимо от реальной кодировки — так велит спецификация multipart form-data
+ * для полей без RFC 5987 (`filename*`). Браузеры при этом отправляют имя файла в UTF-8,
+ * поэтому нелатинские символы (кириллица и т.п.) приходят битыми и требуют перекодировки.
+ */
+function decodeOriginalFileName(originalName: string): string {
+  return Buffer.from(originalName, 'latin1').toString('utf8');
+}
+
 @Injectable()
 export class MeetingFileService {
   private readonly storageDir = path.resolve(process.cwd(), getFileStorageDir());
@@ -26,8 +36,10 @@ export class MeetingFileService {
 
     await this.getMeetingForOwnerOrThrow(user, meetingId);
 
+    const fileName = decodeOriginalFileName(file.originalname);
+
     await fs.mkdir(this.storageDir, { recursive: true });
-    const storedName = `${randomUUID()}${path.extname(file.originalname)}`;
+    const storedName = `${randomUUID()}${path.extname(fileName)}`;
     const storagePath = path.join(this.storageDir, storedName);
     await fs.writeFile(storagePath, file.buffer);
 
@@ -35,7 +47,7 @@ export class MeetingFileService {
       const created = await this.prisma.meetingFile.create({
         data: {
           meetingId,
-          fileName: file.originalname,
+          fileName,
           mimeType: file.mimetype,
           size: file.size,
           storagePath,

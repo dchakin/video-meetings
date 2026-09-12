@@ -38,7 +38,7 @@ describe('MeetingFileService', () => {
 
   let prisma: {
     meeting: { findUnique: jest.Mock };
-    meetingFile: { findFirst: jest.Mock; delete: jest.Mock };
+    meetingFile: { findFirst: jest.Mock; delete: jest.Mock; create: jest.Mock };
   };
   let service: MeetingFileService;
 
@@ -46,9 +46,36 @@ describe('MeetingFileService', () => {
     jest.clearAllMocks();
     prisma = {
       meeting: { findUnique: jest.fn() },
-      meetingFile: { findFirst: jest.fn(), delete: jest.fn() },
+      meetingFile: { findFirst: jest.fn(), delete: jest.fn(), create: jest.fn() },
     };
     service = new MeetingFileService(prisma as unknown as PrismaService);
+  });
+
+  describe('upload', () => {
+    it('перекодирует имя файла из latin1 в UTF-8 (busboy декодирует multipart как latin1)', async () => {
+      prisma.meeting.findUnique.mockResolvedValue(meeting);
+      (fs.mkdir as jest.Mock).mockResolvedValue(undefined);
+      (fs.writeFile as jest.Mock).mockResolvedValue(undefined);
+      prisma.meetingFile.create.mockImplementation(({ data }) =>
+        Promise.resolve({ ...file, ...data }),
+      );
+
+      // Байты UTF-8 строки «файл.txt», прочитанные как latin1 — так их отдаёт busboy.
+      const mangledName = Buffer.from('файл.txt', 'utf8').toString('latin1');
+      const multerFile = {
+        originalname: mangledName,
+        mimetype: 'text/plain',
+        size: 4,
+        buffer: Buffer.from('test'),
+      } as Express.Multer.File;
+
+      const result = await service.upload(owner, meeting.id, multerFile);
+
+      expect(result.fileName).toBe('файл.txt');
+      expect(prisma.meetingFile.create).toHaveBeenCalledWith(
+        expect.objectContaining({ data: expect.objectContaining({ fileName: 'файл.txt' }) }),
+      );
+    });
   });
 
   describe('getForMember', () => {
