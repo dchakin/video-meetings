@@ -174,3 +174,7 @@ HTTP → AuthController → CommandBus.execute(new LoginCommand(...)) → LoginH
 - Unit-тесты класть рядом с кодом как `*.spec.ts`; e2e — в `test/` как `*.e2e-spec.ts`. Как запускать — раздел «Тесты».
 - Общие правила ESLint — в `packages/eslint-config`; общий tsconfig — в `packages/tsconfig/nestjs.json`.
 - При изменении архитектуры воркспейса (структура `src/`, набор модулей, стек, команды, env) обновляй этот файл и, если нужно, корневой `CLAUDE.md` / `README.md` в том же изменении. См. раздел «Поддержка документации» в корневом `CLAUDE.md`.
+
+
+## File upload
+Use this research for it: @docs/research-meeting-file-upload-and-display.md
