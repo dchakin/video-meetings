@@ -33,18 +33,24 @@ export class MeetingFileService {
     const storagePath = path.join(this.storageDir, storedName);
     await fs.writeFile(storagePath, file.buffer);
 
-    const created = await this.prisma.meetingFile.create({
-      data: {
-        meetingId,
-        fileName: file.originalname,
-        mimeType: file.mimetype,
-        size: file.size,
-        storagePath,
-        uploadedById: user.sub,
-      },
-    });
+    try {
+      const created = await this.prisma.meetingFile.create({
+        data: {
+          meetingId,
+          fileName: file.originalname,
+          mimeType: file.mimetype,
+          size: file.size,
+          storagePath,
+          uploadedById: user.sub,
+        },
+      });
 
-    return this.toResponse(created);
+      return this.toResponse(created);
+    } catch (error) {
+      // Запись в БД не удалась — не оставляем файл-сироту без ссылки на него.
+      await fs.unlink(storagePath).catch(() => undefined);
+      throw error;
+    }
   }
 
   async listForMember(user: JwtPayload, meetingId: string): Promise<MeetingFileResponse[]> {
