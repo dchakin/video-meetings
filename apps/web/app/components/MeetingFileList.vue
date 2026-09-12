@@ -1,8 +1,13 @@
 <script setup lang="ts">
 import type { MeetingFile } from '~/composables/useMeetingFiles';
 
-const props = defineProps<{ files: MeetingFile[]; downloading: string | null }>();
-const emit = defineEmits<{ download: [file: MeetingFile] }>();
+const props = defineProps<{
+  files: MeetingFile[];
+  downloading: string | null;
+  deletable?: boolean;
+  deleting?: string | null;
+}>();
+const emit = defineEmits<{ download: [file: MeetingFile]; remove: [file: MeetingFile] }>();
 
 const dateFormatter = new Intl.DateTimeFormat('ru-RU', {
   day: 'numeric',
@@ -43,15 +48,27 @@ function formatSize(bytes: number): string {
         </div>
       </div>
 
-      <UButton
-        icon="i-lucide-download"
-        label="Скачать"
-        color="neutral"
-        variant="outline"
-        size="sm"
-        :loading="downloading === file.id"
-        @click="emit('download', file)"
-      />
+      <div class="flex shrink-0 items-center gap-2">
+        <UButton
+          icon="i-lucide-download"
+          label="Скачать"
+          color="neutral"
+          variant="outline"
+          size="sm"
+          :loading="downloading === file.id"
+          @click="emit('download', file)"
+        />
+        <UButton
+          v-if="props.deletable"
+          icon="i-lucide-trash-2"
+          color="error"
+          variant="outline"
+          size="sm"
+          aria-label="Удалить файл"
+          :loading="deleting === file.id"
+          @click="emit('remove', file)"
+        />
+      </div>
     </li>
   </ul>
 </template>
