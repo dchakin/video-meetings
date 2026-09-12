@@ -33,11 +33,15 @@ describe('Meetings (e2e)', () => {
 
   /** Регистрирует нового пользователя и возвращает его access-токен. */
   async function registerUser(): Promise<string> {
-    const res = await request(http)
-      .post(REGISTER)
-      .send({ email: uniqueEmail(), password: PASSWORD })
-      .expect(201);
-    return (res.body as { accessToken: string }).accessToken;
+    const { token } = await registerUserWithEmail();
+    return token;
+  }
+
+  /** Регистрирует нового пользователя и возвращает его email вместе с access-токеном. */
+  async function registerUserWithEmail(): Promise<{ token: string; email: string }> {
+    const email = uniqueEmail();
+    const res = await request(http).post(REGISTER).send({ email, password: PASSWORD }).expect(201);
+    return { token: (res.body as { accessToken: string }).accessToken, email };
   }
 
   const auth = (token: string): string => `Bearer ${token}`;
@@ -220,6 +224,26 @@ describe('Meetings (e2e)', () => {
         .get(`${MEETINGS}/${created.id}`)
         .set('Authorization', auth(stranger))
         .expect(404);
+    });
+
+    it('участник встречи (по email) тоже может получить её через GET /meetings/:id', async () => {
+      const owner = await registerUser();
+      const participant = await registerUserWithEmail();
+
+      const created = (
+        await request(http)
+          .post(MEETINGS)
+          .set('Authorization', auth(owner))
+          .send(meetingPayload({ participants: [participant.email] }))
+          .expect(201)
+      ).body as MeetingResponse;
+
+      const res = await request(http)
+        .get(`${MEETINGS}/${created.id}`)
+        .set('Authorization', auth(participant.token))
+        .expect(200);
+
+      expect((res.body as MeetingResponse).id).toBe(created.id);
     });
 
     it('требует авторизацию — 401 без токена', async () => {
