@@ -152,6 +152,153 @@ describe('Meeting files (e2e)', () => {
     });
   });
 
+  const downloadUrl = (meetingId: string, fileId: string): string =>
+    `${filesUrl(meetingId)}/${fileId}/download`;
+  const fileUrl = (meetingId: string, fileId: string): string => `${filesUrl(meetingId)}/${fileId}`;
+
+  async function uploadFile(
+    token: string,
+    meetingId: string,
+    content: string,
+    fileName: string,
+  ): Promise<MeetingFileResponse> {
+    return (
+      await request(http)
+        .post(filesUrl(meetingId))
+        .set('Authorization', auth(token))
+        .attach('file', Buffer.from(content), fileName)
+        .expect(201)
+    ).body as MeetingFileResponse;
+  }
+
+  describe('GET /meetings/:id/files/:fileId/download', () => {
+    it('владелец скачивает файл — содержимое совпадает побайтово', async () => {
+      const owner = await registerUser();
+      const meeting = await createMeeting(owner.token);
+      const uploaded = await uploadFile(owner.token, meeting.id, 'hello world', 'notes.txt');
+
+      const res = await request(http)
+        .get(downloadUrl(meeting.id, uploaded.id))
+        .set('Authorization', auth(owner.token))
+        .expect(200);
+
+      expect(res.headers['content-type']).toContain('text/plain');
+      expect(res.text).toBe('hello world');
+    });
+
+    it('участник встречи скачивает файл', async () => {
+      const owner = await registerUser();
+      const participant = await registerUser();
+      const meeting = await createMeeting(owner.token, { participants: [participant.email] });
+      const uploaded = await uploadFile(owner.token, meeting.id, 'hello', 'a.txt');
+
+      const res = await request(http)
+        .get(downloadUrl(meeting.id, uploaded.id))
+        .set('Authorization', auth(participant.token))
+        .expect(200);
+
+      expect(res.text).toBe('hello');
+    });
+
+    it('запрещает скачивание постороннему — 404', async () => {
+      const owner = await registerUser();
+      const stranger = await registerUser();
+      const meeting = await createMeeting(owner.token);
+      const uploaded = await uploadFile(owner.token, meeting.id, 'hello', 'a.txt');
+
+      await request(http)
+        .get(downloadUrl(meeting.id, uploaded.id))
+        .set('Authorization', auth(stranger.token))
+        .expect(404);
+    });
+
+    it('возвращает 404 для несуществующего файла', async () => {
+      const owner = await registerUser();
+      const meeting = await createMeeting(owner.token);
+
+      await request(http)
+        .get(downloadUrl(meeting.id, randomUUID()))
+        .set('Authorization', auth(owner.token))
+        .expect(404);
+    });
+
+    it('требует авторизацию — 401 без токена', async () => {
+      const owner = await registerUser();
+      const meeting = await createMeeting(owner.token);
+      const uploaded = await uploadFile(owner.token, meeting.id, 'hello', 'a.txt');
+
+      await request(http).get(downloadUrl(meeting.id, uploaded.id)).expect(401);
+    });
+  });
+
+  describe('DELETE /meetings/:id/files/:fileId', () => {
+    it('владелец удаляет файл — пропадает из списка и недоступен для скачивания', async () => {
+      const owner = await registerUser();
+      const meeting = await createMeeting(owner.token);
+      const uploaded = await uploadFile(owner.token, meeting.id, 'hello', 'a.txt');
+
+      await request(http)
+        .delete(fileUrl(meeting.id, uploaded.id))
+        .set('Authorization', auth(owner.token))
+        .expect(204);
+
+      const list = (
+        await request(http)
+          .get(filesUrl(meeting.id))
+          .set('Authorization', auth(owner.token))
+          .expect(200)
+      ).body as MeetingFileResponse[];
+      expect(list).toHaveLength(0);
+
+      await request(http)
+        .get(downloadUrl(meeting.id, uploaded.id))
+        .set('Authorization', auth(owner.token))
+        .expect(404);
+    });
+
+    it('запрещает удаление участнику без прав владельца — 404', async () => {
+      const owner = await registerUser();
+      const participant = await registerUser();
+      const meeting = await createMeeting(owner.token, { participants: [participant.email] });
+      const uploaded = await uploadFile(owner.token, meeting.id, 'hello', 'a.txt');
+
+      await request(http)
+        .delete(fileUrl(meeting.id, uploaded.id))
+        .set('Authorization', auth(participant.token))
+        .expect(404);
+    });
+
+    it('запрещает удаление постороннему — 404', async () => {
+      const owner = await registerUser();
+      const stranger = await registerUser();
+      const meeting = await createMeeting(owner.token);
+      const uploaded = await uploadFile(owner.token, meeting.id, 'hello', 'a.txt');
+
+      await request(http)
+        .delete(fileUrl(meeting.id, uploaded.id))
+        .set('Authorization', auth(stranger.token))
+        .expect(404);
+    });
+
+    it('возвращает 404 для несуществующего файла', async () => {
+      const owner = await registerUser();
+      const meeting = await createMeeting(owner.token);
+
+      await request(http)
+        .delete(fileUrl(meeting.id, randomUUID()))
+        .set('Authorization', auth(owner.token))
+        .expect(404);
+    });
+
+    it('требует авторизацию — 401 без токена', async () => {
+      const owner = await registerUser();
+      const meeting = await createMeeting(owner.token);
+      const uploaded = await uploadFile(owner.token, meeting.id, 'hello', 'a.txt');
+
+      await request(http).delete(fileUrl(meeting.id, uploaded.id)).expect(401);
+    });
+  });
+
   describe('GET /meetings/:id/files', () => {
     it('владелец видит список загруженных файлов', async () => {
       const owner = await registerUser();

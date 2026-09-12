@@ -64,6 +64,31 @@ export class MeetingFileService {
     return files.map((file) => this.toResponse(file));
   }
 
+  async getForMember(user: JwtPayload, meetingId: string, fileId: string): Promise<MeetingFile> {
+    await this.getMeetingForMemberOrThrow(user, meetingId);
+    return this.getFileOrThrow(meetingId, fileId);
+  }
+
+  async deleteAsOwner(user: JwtPayload, meetingId: string, fileId: string): Promise<void> {
+    const meeting = await this.getMeetingOrThrow(meetingId);
+    if (meeting.ownerId !== user.sub) {
+      // Скрываем существование встречи/файла от тех, кто не вправе удалять — как и upload.
+      throw new NotFoundException('Файл не найден');
+    }
+    const file = await this.getFileOrThrow(meetingId, fileId);
+
+    await this.prisma.meetingFile.delete({ where: { id: file.id } });
+    await fs.unlink(file.storagePath).catch(() => undefined);
+  }
+
+  private async getFileOrThrow(meetingId: string, fileId: string): Promise<MeetingFile> {
+    const file = await this.prisma.meetingFile.findFirst({ where: { id: fileId, meetingId } });
+    if (!file) {
+      throw new NotFoundException('Файл не найден');
+    }
+    return file;
+  }
+
   private async getMeetingOrThrow(meetingId: string): Promise<Meeting> {
     const meeting = await this.prisma.meeting.findUnique({ where: { id: meetingId } });
     if (!meeting) {
