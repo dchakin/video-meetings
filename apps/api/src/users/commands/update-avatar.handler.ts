@@ -39,7 +39,7 @@ export class UpdateAvatarHandler implements ICommandHandler<UpdateAvatarCommand>
     const storedPath = path.join(this.storageDir, storedName);
     await fs.writeFile(storedPath, file.buffer);
 
-    let user;
+    let user: typeof existing;
     try {
       user = await this.prisma.user.update({
         where: { id: userId },
