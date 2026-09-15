@@ -35,13 +35,17 @@ src/
     dto/auth-credentials.dto.ts — { email, password }, правила class-validator
     guards/jwt-auth.guard.ts — проверяет `Authorization: Bearer <JWT>`, кладёт payload в `request.user` (401 иначе); экспортируется вместе с JwtModule
     current-user.decorator.ts — `@CurrentUser()`: достаёт JwtPayload из запроса
-  users/               — CQRS: единственный владелец таблицы User (создание и поиск). Провайдеров наружу не экспортирует — только команды/запросы
+  users/               — CQRS: единственный владелец таблицы User (создание, поиск, профиль, смена имени и пароля). Провайдеров наружу не экспортирует — только команды/запросы
     users.module.ts    — CqrsModule, регистрирует command- и query-обработчики
+    users.types.ts     — UserProfile (публичная форма без passwordHash) и toUserProfile(user) (имя по умолчанию — локальная часть email)
     commands/
       create-user.command.ts / create-user.handler.ts — создаёт User по { email, passwordHash } (409 при дубле)
+      update-user-name.command.ts / update-user-name.handler.ts — обновляет name по userId, возвращает UserProfile (404, если пользователя нет)
+      change-password.command.ts / change-password.handler.ts — сверяет старый пароль (bcrypt, 401 при несовпадении), валидирует новый (8–72 символов, 400 иначе), хеширует и обновляет passwordHash (404, если пользователя нет)
       index.ts         — USERS_COMMAND_HANDLERS + реэкспорт команд
     queries/
       find-user-by-email.query.ts / find-user-by-email.handler.ts — ищет User по email, возвращает User | null
+      get-user-profile.query.ts / get-user-profile.handler.ts — возвращает UserProfile по userId (404, если пользователя нет)
       index.ts         — USERS_QUERY_HANDLERS + реэкспорт запросов
   meeting/             — обычный модуль Nest (controller + service), защищён `JwtAuthGuard`
     meeting.module.ts     — импортирует AuthModule (ради JwtAuthGuard/JwtModule)
@@ -132,8 +136,8 @@ npm run prisma:migrate -w @video-meetings/api  # применить миграц
 
 - **`auth`** — авторизация: хеширование и сверка пароля (`bcryptjs`), выпуск и проверка JWT. Таблицу `User`
   напрямую не читает и не пишет.
-- **`users`** — единственный владелец таблицы `User`: создание и поиск. Наружу не экспортирует ни одного
-  провайдера, общается только через команды/запросы.
+- **`users`** — единственный владелец таблицы `User`: создание, поиск, профиль, смена имени и пароля.
+  Наружу не экспортирует ни одного провайдера, общается только через команды/запросы.
 - Взаимодействие — **только через шину CQRS** (`CommandBus` / `QueryBus`), без прямых импортов сервисов между
   модулями. `AuthModule` импортирует `UsersModule` лишь чтобы обработчики `users` попали в граф модулей.
 
