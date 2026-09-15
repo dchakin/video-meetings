@@ -38,12 +38,12 @@ src/
   users/               — CQRS: единственный владелец таблицы User (создание, поиск, профиль, смена имени и пароля). Провайдеров наружу не экспортирует — только команды/запросы
     users.module.ts    — CqrsModule, регистрирует command- и query-обработчики
     users.types.ts     — UserProfile (публичная форма без passwordHash), AvatarFileInput (файл аватара независимо от транспорта) и toUserProfile(user) (имя по умолчанию — локальная часть email)
-    avatar-storage.config.ts — getAvatarStorageDir() / getAvatarMaxSizeBytes() (env AVATAR_STORAGE_DIR / AVATAR_MAX_SIZE_BYTES, дефолт 5 МБ), ALLOWED_AVATAR_MIME_TYPES (JPEG/PNG/WebP), AVATAR_URL_PREFIX (`/avatars/`)
+    avatar-storage.config.ts — getAvatarStorageDir() / getAvatarMaxSizeBytes() (env AVATAR_STORAGE_DIR / AVATAR_MAX_SIZE_BYTES, дефолт 5 МБ), ALLOWED_AVATAR_MIME_TYPES (JPEG/PNG/WebP), AVATAR_MIME_TYPE_EXTENSIONS (mimetype → расширение файла на диске), AVATAR_URL_PREFIX (`/avatars/`)
     commands/
       create-user.command.ts / create-user.handler.ts — создаёт User по { email, passwordHash } (409 при дубле)
       update-user-name.command.ts / update-user-name.handler.ts — обновляет name по userId, возвращает UserProfile (404, если пользователя нет)
       change-password.command.ts / change-password.handler.ts — сверяет старый пароль (bcrypt, 401 при несовпадении), валидирует новый (8–72 символов, 400 иначе), хеширует и обновляет passwordHash (404, если пользователя нет)
-      update-avatar.command.ts / update-avatar.handler.ts — валидирует формат (JPEG/PNG/WebP) и размер (до 5 МБ, 400 иначе) присланного файла, сохраняет его в `AVATAR_STORAGE_DIR` под случайным именем (`randomUUID` + исходное расширение), удаляет предыдущий файл аватара при замене (по `avatarUrl`, ошибка отсутствия файла игнорируется) и обновляет `avatarUrl` (404, если пользователя нет)
+      update-avatar.command.ts / update-avatar.handler.ts — валидирует формат (JPEG/PNG/WebP) и размер (до 5 МБ, 400 иначе) присланного файла, сохраняет его в `AVATAR_STORAGE_DIR` под случайным именем (`randomUUID` + расширение по проверенному mimetype, не по имени файла от клиента — иначе можно сохранить произвольные байты под расширением вроде `.html`), обновляет `avatarUrl` (404, если пользователя нет; при ошибке записи в БД сохранённый файл удаляется, чтобы не оставлять сироту), затем удаляет предыдущий файл аватара при замене (по старому `avatarUrl`, ошибка отсутствия файла игнорируется)
       index.ts         — USERS_COMMAND_HANDLERS + реэкспорт команд
     queries/
       find-user-by-email.query.ts / find-user-by-email.handler.ts — ищет User по email, возвращает User | null

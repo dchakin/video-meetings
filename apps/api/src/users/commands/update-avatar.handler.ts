@@ -6,6 +6,7 @@ import * as path from 'node:path';
 import { PrismaService } from '../../prisma/prisma.service';
 import {
   ALLOWED_AVATAR_MIME_TYPES,
+  AVATAR_MIME_TYPE_EXTENSIONS,
   AVATAR_URL_PREFIX,
   getAvatarMaxSizeBytes,
   getAvatarStorageDir,
@@ -34,8 +35,21 @@ export class UpdateAvatarHandler implements ICommandHandler<UpdateAvatarCommand>
     }
 
     await fs.mkdir(this.storageDir, { recursive: true });
-    const storedName = `${randomUUID()}${path.extname(file.originalName)}`;
-    await fs.writeFile(path.join(this.storageDir, storedName), file.buffer);
+    const storedName = `${randomUUID()}${AVATAR_MIME_TYPE_EXTENSIONS[file.mimeType]}`;
+    const storedPath = path.join(this.storageDir, storedName);
+    await fs.writeFile(storedPath, file.buffer);
+
+    let user;
+    try {
+      user = await this.prisma.user.update({
+        where: { id: userId },
+        data: { avatarUrl: `${AVATAR_URL_PREFIX}${storedName}` },
+      });
+    } catch (error) {
+      // Запись в БД не удалась — не оставляем файл-сироту без ссылки на него.
+      await fs.unlink(storedPath).catch(() => undefined);
+      throw error;
+    }
 
     if (existing.avatarUrl?.startsWith(AVATAR_URL_PREFIX)) {
       const oldPath = path.join(
@@ -49,10 +63,6 @@ export class UpdateAvatarHandler implements ICommandHandler<UpdateAvatarCommand>
       });
     }
 
-    const user = await this.prisma.user.update({
-      where: { id: userId },
-      data: { avatarUrl: `${AVATAR_URL_PREFIX}${storedName}` },
-    });
     return toUserProfile(user);
   }
 }

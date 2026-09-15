@@ -5,7 +5,18 @@ import 'dotenv/config';
 export const DEFAULT_AVATAR_STORAGE_DIR = 'storage/avatars';
 export const DEFAULT_AVATAR_MAX_SIZE_BYTES = 5 * 1024 * 1024;
 export const AVATAR_URL_PREFIX = '/avatars/';
-export const ALLOWED_AVATAR_MIME_TYPES = ['image/jpeg', 'image/png', 'image/webp'];
+
+/**
+ * Расширение файла выбирается по проверенному mimetype, а не по присланному клиентом
+ * originalName — иначе можно сохранить произвольные байты под расширением вроде `.html`
+ * и получить их исполнение при раздаче статики (stored XSS).
+ */
+export const AVATAR_MIME_TYPE_EXTENSIONS: Record<string, string> = {
+  'image/jpeg': '.jpg',
+  'image/png': '.png',
+  'image/webp': '.webp',
+};
+export const ALLOWED_AVATAR_MIME_TYPES = Object.keys(AVATAR_MIME_TYPE_EXTENSIONS);
 
 /** Директория хранения аватаров (относительно cwd процесса, вне `dist`). */
 export function getAvatarStorageDir(): string {
