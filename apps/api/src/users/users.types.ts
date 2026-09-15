@@ -8,6 +8,14 @@ export interface UserProfile {
   avatarUrl: string | null;
 }
 
+/** Загруженный файл аватара, независимый от транспорта (Express.Multer.File и т.п.). */
+export interface AvatarFileInput {
+  buffer: Buffer;
+  originalName: string;
+  mimeType: string;
+  size: number;
+}
+
 /** Приводит User к UserProfile, подставляя вместо пустого имени локальную часть email. */
 export function toUserProfile(user: User): UserProfile {
   return {

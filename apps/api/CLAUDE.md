@@ -37,11 +37,13 @@ src/
     current-user.decorator.ts — `@CurrentUser()`: достаёт JwtPayload из запроса
   users/               — CQRS: единственный владелец таблицы User (создание, поиск, профиль, смена имени и пароля). Провайдеров наружу не экспортирует — только команды/запросы
     users.module.ts    — CqrsModule, регистрирует command- и query-обработчики
-    users.types.ts     — UserProfile (публичная форма без passwordHash) и toUserProfile(user) (имя по умолчанию — локальная часть email)
+    users.types.ts     — UserProfile (публичная форма без passwordHash), AvatarFileInput (файл аватара независимо от транспорта) и toUserProfile(user) (имя по умолчанию — локальная часть email)
+    avatar-storage.config.ts — getAvatarStorageDir() / getAvatarMaxSizeBytes() (env AVATAR_STORAGE_DIR / AVATAR_MAX_SIZE_BYTES, дефолт 5 МБ), ALLOWED_AVATAR_MIME_TYPES (JPEG/PNG/WebP), AVATAR_URL_PREFIX (`/avatars/`)
     commands/
       create-user.command.ts / create-user.handler.ts — создаёт User по { email, passwordHash } (409 при дубле)
       update-user-name.command.ts / update-user-name.handler.ts — обновляет name по userId, возвращает UserProfile (404, если пользователя нет)
       change-password.command.ts / change-password.handler.ts — сверяет старый пароль (bcrypt, 401 при несовпадении), валидирует новый (8–72 символов, 400 иначе), хеширует и обновляет passwordHash (404, если пользователя нет)
+      update-avatar.command.ts / update-avatar.handler.ts — валидирует формат (JPEG/PNG/WebP) и размер (до 5 МБ, 400 иначе) присланного файла, сохраняет его в `AVATAR_STORAGE_DIR` под случайным именем (`randomUUID` + исходное расширение), удаляет предыдущий файл аватара при замене (по `avatarUrl`, ошибка отсутствия файла игнорируется) и обновляет `avatarUrl` (404, если пользователя нет)
       index.ts         — USERS_COMMAND_HANDLERS + реэкспорт команд
     queries/
       find-user-by-email.query.ts / find-user-by-email.handler.ts — ищет User по email, возвращает User | null
@@ -92,6 +94,7 @@ nest-cli.json        — sourceRoot: src, deleteOutDir: true
 - JWT — `JWT_SECRET` (по умолчанию `dev-secret-change-me`) и `JWT_EXPIRES_IN` (по умолчанию `1d`).
 - CORS — `WEB_ORIGIN` (по умолчанию `http://localhost:3000`): список разрешённых origin фронтенда через запятую, включается в `main.ts` через `app.enableCors()`.
 - Файлы встреч — `FILE_STORAGE_DIR` (по умолчанию `storage/meeting-files`, путь относительно `process.cwd()` — вне `dist`, не коммитится, см. `.gitignore`) и `FILE_MAX_SIZE_BYTES` (по умолчанию `10485760`, 10 MB).
+- Аватары пользователей — `AVATAR_STORAGE_DIR` (по умолчанию `storage/avatars`, та же логика, что и у файлов встреч) и `AVATAR_MAX_SIZE_BYTES` (по умолчанию `5242880`, 5 MB).
 
 ## Тесты
 
