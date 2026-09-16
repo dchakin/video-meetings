@@ -56,11 +56,10 @@ export class UpdateAvatarHandler implements ICommandHandler<UpdateAvatarCommand>
         this.storageDir,
         existing.avatarUrl.slice(AVATAR_URL_PREFIX.length),
       );
-      await fs.unlink(oldPath).catch((error: NodeJS.ErrnoException) => {
-        if (error.code !== 'ENOENT') {
-          throw error;
-        }
-      });
+      // Новый аватар уже сохранён и записан в БД — не проваливаем успешный запрос
+      // из-за того, что не удалось убрать старый файл (осиротевший файл на диске
+      // не опаснее незавершённой замены, отданной клиенту как ошибка).
+      await fs.unlink(oldPath).catch(() => undefined);
     }
 
     return toUserProfile(user);

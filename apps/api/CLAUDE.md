@@ -49,6 +49,9 @@ src/
       find-user-by-email.query.ts / find-user-by-email.handler.ts — ищет User по email, возвращает User | null
       get-user-profile.query.ts / get-user-profile.handler.ts — возвращает UserProfile по userId (404, если пользователя нет)
       index.ts         — USERS_QUERY_HANDLERS + реэкспорт запросов
+  profile/             — HTTP-слой профиля пользователя (CQRS-диспатч в `users`), защищён `JwtAuthGuard`
+    profile.module.ts     — импортирует CqrsModule, AuthModule (ради JwtAuthGuard) и UsersModule (ради обработчиков команд/запросов `users`)
+    profile.controller.ts — POST /profile/avatar (multipart, поле `file`, `FileInterceptor` с лимитом `getAvatarMaxSizeBytes()`) → `UpdateAvatarCommand` через `CommandBus`; без файла — 400 до диспатча команды
   meeting/             — обычный модуль Nest (controller + service), защищён `JwtAuthGuard`
     meeting.module.ts     — импортирует AuthModule (ради JwtAuthGuard/JwtModule)
     meeting.controller.ts — POST /meetings, GET /meetings, GET /meetings/:id; все под `@UseGuards(JwtAuthGuard)`
