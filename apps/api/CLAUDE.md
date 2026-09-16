@@ -35,14 +35,25 @@ src/
     dto/auth-credentials.dto.ts — { email, password }, правила class-validator
     guards/jwt-auth.guard.ts — проверяет `Authorization: Bearer <JWT>`, кладёт payload в `request.user` (401 иначе); экспортируется вместе с JwtModule
     current-user.decorator.ts — `@CurrentUser()`: достаёт JwtPayload из запроса
-  users/               — CQRS: единственный владелец таблицы User (создание и поиск). Провайдеров наружу не экспортирует — только команды/запросы
+  users/               — CQRS: единственный владелец таблицы User (создание, поиск, профиль, смена имени и пароля). Провайдеров наружу не экспортирует — только команды/запросы
     users.module.ts    — CqrsModule, регистрирует command- и query-обработчики
+    users.types.ts     — UserProfile (публичная форма без passwordHash), AvatarFileInput (файл аватара независимо от транспорта) и toUserProfile(user) (имя по умолчанию — локальная часть email)
+    avatar-storage.config.ts — getAvatarStorageDir() / getAvatarMaxSizeBytes() (env AVATAR_STORAGE_DIR / AVATAR_MAX_SIZE_BYTES, дефолт 5 МБ), ALLOWED_AVATAR_MIME_TYPES (JPEG/PNG/WebP), AVATAR_MIME_TYPE_EXTENSIONS (mimetype → расширение файла на диске), AVATAR_URL_PREFIX (`/avatars/`)
     commands/
       create-user.command.ts / create-user.handler.ts — создаёт User по { email, passwordHash } (409 при дубле)
+      update-user-name.command.ts / update-user-name.handler.ts — обновляет name по userId, возвращает UserProfile (404, если пользователя нет)
+      change-password.command.ts / change-password.handler.ts — сверяет старый пароль (bcrypt, 401 при несовпадении), валидирует новый (8–72 символов, 400 иначе), хеширует и обновляет passwordHash (404, если пользователя нет)
+      update-avatar.command.ts / update-avatar.handler.ts — валидирует формат (JPEG/PNG/WebP) и размер (до 5 МБ, 400 иначе) присланного файла, сохраняет его в `AVATAR_STORAGE_DIR` под случайным именем (`randomUUID` + расширение по проверенному mimetype, не по имени файла от клиента — иначе можно сохранить произвольные байты под расширением вроде `.html`), обновляет `avatarUrl` (404, если пользователя нет; при ошибке записи в БД сохранённый файл удаляется, чтобы не оставлять сироту), затем удаляет предыдущий файл аватара при замене (по старому `avatarUrl`, ошибка отсутствия файла игнорируется)
       index.ts         — USERS_COMMAND_HANDLERS + реэкспорт команд
     queries/
       find-user-by-email.query.ts / find-user-by-email.handler.ts — ищет User по email, возвращает User | null
+      get-user-profile.query.ts / get-user-profile.handler.ts — возвращает UserProfile по userId (404, если пользователя нет)
       index.ts         — USERS_QUERY_HANDLERS + реэкспорт запросов
+  profile/             — HTTP-слой профиля пользователя (CQRS-диспатч в `users`), защищён `JwtAuthGuard`
+    profile.module.ts     — импортирует CqrsModule, AuthModule (ради JwtAuthGuard) и UsersModule (ради обработчиков команд/запросов `users`)
+    profile.controller.ts — GET /profile → `GetUserProfileQuery` через `QueryBus`; PATCH /profile (имя, DTO `UpdateProfileNameDto`) → `UpdateUserNameCommand`; PATCH /profile/password (DTO `ChangePasswordDto`) → `ChangePasswordCommand`; POST /profile/avatar (multipart, поле `file`, `FileInterceptor` с лимитом `getAvatarMaxSizeBytes()`) → `UpdateAvatarCommand` через `CommandBus`; без файла — 400 до диспатча команды
+    dto/update-profile-name.dto.ts — { name } (1–100 символов)
+    dto/change-password.dto.ts — { oldPassword, newPassword } (newPassword — 8–72 символов)
   meeting/             — обычный модуль Nest (controller + service), защищён `JwtAuthGuard`
     meeting.module.ts     — импортирует AuthModule (ради JwtAuthGuard/JwtModule)
     meeting.controller.ts — POST /meetings, GET /meetings, GET /meetings/:id; все под `@UseGuards(JwtAuthGuard)`
@@ -88,6 +99,7 @@ nest-cli.json        — sourceRoot: src, deleteOutDir: true
 - JWT — `JWT_SECRET` (по умолчанию `dev-secret-change-me`) и `JWT_EXPIRES_IN` (по умолчанию `1d`).
 - CORS — `WEB_ORIGIN` (по умолчанию `http://localhost:3000`): список разрешённых origin фронтенда через запятую, включается в `main.ts` через `app.enableCors()`.
 - Файлы встреч — `FILE_STORAGE_DIR` (по умолчанию `storage/meeting-files`, путь относительно `process.cwd()` — вне `dist`, не коммитится, см. `.gitignore`) и `FILE_MAX_SIZE_BYTES` (по умолчанию `10485760`, 10 MB).
+- Аватары пользователей — `AVATAR_STORAGE_DIR` (по умолчанию `storage/avatars`, та же логика, что и у файлов встреч) и `AVATAR_MAX_SIZE_BYTES` (по умолчанию `5242880`, 5 MB).
 
 ## Тесты
 
@@ -132,8 +144,8 @@ npm run prisma:migrate -w @video-meetings/api  # применить миграц
 
 - **`auth`** — авторизация: хеширование и сверка пароля (`bcryptjs`), выпуск и проверка JWT. Таблицу `User`
   напрямую не читает и не пишет.
-- **`users`** — единственный владелец таблицы `User`: создание и поиск. Наружу не экспортирует ни одного
-  провайдера, общается только через команды/запросы.
+- **`users`** — единственный владелец таблицы `User`: создание, поиск, профиль, смена имени и пароля.
+  Наружу не экспортирует ни одного провайдера, общается только через команды/запросы.
 - Взаимодействие — **только через шину CQRS** (`CommandBus` / `QueryBus`), без прямых импортов сервисов между
   модулями. `AuthModule` импортирует `UsersModule` лишь чтобы обработчики `users` попали в граф модулей.
 

@@ -7,6 +7,7 @@ import { AuthModule } from './auth/auth.module';
 import { MeetingModule } from './meeting/meeting.module';
 import { MeetingFileModule } from './meeting-file/meeting-file.module';
 import { PrismaModule } from './prisma/prisma.module';
+import { ProfileModule } from './profile/profile.module';
 import { UsersModule } from './users/users.module';
 
 @Module({
@@ -17,6 +18,7 @@ import { UsersModule } from './users/users.module';
     AuthModule,
     MeetingModule,
     MeetingFileModule,
+    ProfileModule,
   ],
   controllers: [AppController],
   providers: [

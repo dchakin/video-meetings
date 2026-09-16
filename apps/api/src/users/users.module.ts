@@ -4,9 +4,11 @@ import { USERS_COMMAND_HANDLERS } from './commands';
 import { USERS_QUERY_HANDLERS } from './queries';
 
 /**
- * Модуль пользователей: создание и поиск пользователя.
- * Наружу общается только через CQRS (`CreateUserCommand`, `FindUserByEmailQuery`) — своих
- * провайдеров не экспортирует. Потребитель — модуль `auth`.
+ * Модуль пользователей: создание, поиск и профиль пользователя.
+ * Наружу общается только через CQRS (`CreateUserCommand`, `FindUserByEmailQuery`,
+ * `GetUserProfileQuery`, `UpdateUserNameCommand`, `ChangePasswordCommand`,
+ * `UpdateAvatarCommand`) — своих провайдеров не экспортирует.
+ * Потребители — модули `auth` и `profile`.
  */
 @Module({
   imports: [CqrsModule],
