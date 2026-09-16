@@ -51,7 +51,9 @@ src/
       index.ts         — USERS_QUERY_HANDLERS + реэкспорт запросов
   profile/             — HTTP-слой профиля пользователя (CQRS-диспатч в `users`), защищён `JwtAuthGuard`
     profile.module.ts     — импортирует CqrsModule, AuthModule (ради JwtAuthGuard) и UsersModule (ради обработчиков команд/запросов `users`)
-    profile.controller.ts — POST /profile/avatar (multipart, поле `file`, `FileInterceptor` с лимитом `getAvatarMaxSizeBytes()`) → `UpdateAvatarCommand` через `CommandBus`; без файла — 400 до диспатча команды
+    profile.controller.ts — GET /profile → `GetUserProfileQuery` через `QueryBus`; PATCH /profile (имя, DTO `UpdateProfileNameDto`) → `UpdateUserNameCommand`; PATCH /profile/password (DTO `ChangePasswordDto`) → `ChangePasswordCommand`; POST /profile/avatar (multipart, поле `file`, `FileInterceptor` с лимитом `getAvatarMaxSizeBytes()`) → `UpdateAvatarCommand` через `CommandBus`; без файла — 400 до диспатча команды
+    dto/update-profile-name.dto.ts — { name } (1–100 символов)
+    dto/change-password.dto.ts — { oldPassword, newPassword } (newPassword — 8–72 символов)
   meeting/             — обычный модуль Nest (controller + service), защищён `JwtAuthGuard`
     meeting.module.ts     — импортирует AuthModule (ради JwtAuthGuard/JwtModule)
     meeting.controller.ts — POST /meetings, GET /meetings, GET /meetings/:id; все под `@UseGuards(JwtAuthGuard)`
