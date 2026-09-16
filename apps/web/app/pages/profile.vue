@@ -3,12 +3,18 @@ definePageMeta({ middleware: 'auth' });
 
 useHead({ title: 'Профиль' });
 
+const config = useRuntimeConfig();
 const { profile, load } = useProfile();
 
 const { pending, error, refresh } = await useAsyncData('profile', () => load());
 
 /** Имя может быть не заполнено — тогда показываем локальную часть email. */
 const displayName = computed(() => profile.value?.name || profile.value?.email.split('@')[0] || '');
+
+/** `avatarUrl` от API — относительный путь, поэтому собираем абсолютный URL сами. */
+const avatarSrc = computed(() =>
+  profile.value?.avatarUrl ? `${config.public.apiBase}${profile.value.avatarUrl}` : undefined,
+);
 </script>
 
 <template>
@@ -50,12 +56,7 @@ const displayName = computed(() => profile.value?.name || profile.value?.email.s
         </div>
 
         <div v-else class="flex items-center gap-4">
-          <UAvatar
-            :src="profile?.avatarUrl ?? undefined"
-            :alt="displayName"
-            icon="i-lucide-user"
-            size="xl"
-          />
+          <UAvatar :src="avatarSrc" :alt="displayName" icon="i-lucide-user" size="xl" />
           <div>
             <p class="font-display text-lg font-semibold text-highlighted">{{ displayName }}</p>
             <p class="mt-1 flex items-center gap-1.5 text-sm text-muted">
