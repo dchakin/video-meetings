@@ -1,74 +1,54 @@
 # CLAUDE.md
 
-Указания для Claude Code при работе в этом репозитории.
+Instructions for Claude Code when working in this repository.
 
-## Обзор
+## Overview
 
-`video-meetings` — монорепозиторий на **npm workspaces** (Node.js >= 22).
+`video-meetings` is a monorepo on **npm workspaces** (Node.js >= 22).
 
 ```
 apps/
-  web/   — фронтенд: Nuxt 4 + Nuxt UI (TypeScript, ESM)
-  api/   — бэкенд: Nest.js 11 + Prisma 6 (PostgreSQL), JWT-аутентификация (CQRS, @nestjs/cqrs) (TypeScript, CommonJS)
+  web/   — frontend: Nuxt 4 + Nuxt UI (TypeScript, ESM)
+  api/   — backend: Nest.js 11 + Prisma 6 (PostgreSQL), JWT authentication (CQRS, @nestjs/cqrs) (TypeScript, CommonJS)
 packages/
-  eslint-config/ — общий flat-конфиг ESLint (@video-meetings/eslint-config, экспорт ./base)
-  tsconfig/      — общие tsconfig (@video-meetings/tsconfig: base.json / nestjs.json)
+  eslint-config/ — shared flat ESLint config (@video-meetings/eslint-config, exports ./base)
+  tsconfig/      — shared tsconfig (@video-meetings/tsconfig: base.json / nestjs.json)
 ```
 
-У каждого приложения есть собственный `CLAUDE.md` в `apps/web/` и `apps/api/` — читай его при работе внутри воркспейса.
+Each app has its own `CLAUDE.md` in `apps/web/` and `apps/api/` — read it when working inside that workspace.
 
-## Команды (из корня)
+## Commands, setup, DB, tests
 
-| Команда                                 | Действие                                             |
-| --------------------------------------- | ---------------------------------------------------- |
-| `npm run dev`                           | Параллельно web (`:3000`) и api (`:4000`)            |
-| `npm run dev:web` / `dev:api`           | Только один воркспейс                                |
-| `npm run build`                         | Сборка всех воркспейсов (`--if-present`)             |
-| `npm run lint` / `lint:fix`             | ESLint по всем воркспейсам                           |
-| `npm run typecheck`                     | Проверка типов по всем воркспейсам                   |
-| `npm run test`                          | Тесты по всем воркспейсам (сейчас только api — unit) |
-| `npm run format` / `format:check`       | Prettier по всему репозиторию                        |
-| `npm run db:up` / `db:down` / `db:logs` | PostgreSQL в Docker Compose (сервис `db`)            |
+The full list of commands (from the root and per workspace), dependency installation, bringing up PostgreSQL
+and running unit/e2e tests — see `README.md`. For a single workspace: `npm run <script> -w @video-meetings/web`
+(or `@video-meetings/api`). The PostgreSQL port is set via `POSTGRES_PORT` (defaults to `5432`, but locally
+may be overridden in `.env`) — check `.env` for the actual value instead of assuming it's fixed.
+Details on api tests (test suites, running a single file/case) — `apps/api/CLAUDE.md`, section "Tests".
 
-Для одного воркспейса: `npm run <script> -w @video-meetings/web` (или `@video-meetings/api`).
+## Conventions
 
-### Тесты
-
-- `npm run test` из корня — unit-тесты api (Jest). У web тесты пока не настроены.
-- e2e api — `npm run test:e2e -w @video-meetings/api`; поднимают приложение и ходят в реальную БД,
-  поэтому нужны `npm run db:up` и применённые миграции (`npm run prisma:migrate -w @video-meetings/api`).
-- Подробности (наборы, запуск одного файла/кейса, требования) — `apps/api/CLAUDE.md`, раздел «Тесты».
-
-## Установка зависимостей
-
-```bash
-npm install
-```
-
-## База данных
-
-PostgreSQL 17 в контейнере — `docker-compose.yml`, сервис `db`, порт `5432`, том `db-data`.
-Параметры (`POSTGRES_USER` / `POSTGRES_PASSWORD` / `POSTGRES_DB` / `POSTGRES_PORT`) — в корневом `.env` (пример — `.env.example`).
-Строка подключения для api — `DATABASE_URL` в `apps/api/.env` (пример — `apps/api/.env.example`).
-
-Доступ к БД в api — через **Prisma 6**. Схема и миграции — `apps/api/prisma/`. После `npm run db:up` применить миграции: `npm run prisma:migrate -w @video-meetings/api` (в CI/проде — `prisma:deploy`). Клиент генерируется командой `npm run prisma:generate -w @video-meetings/api`.
-
-## Соглашения
-
-- **Не редактировать вручную** сгенерированные файлы: `apps/web/.nuxt/**`, `apps/web/.output/**`, `apps/api/dist/**`.
-- Общие правила ESLint и tsconfig менять в `packages/*`, framework-специфику — в самих приложениях.
-- Форматирование — Prettier (`.prettierrc.json`), не конфликтует с ESLint (`eslint-config-prettier`). После каждого `Write`/`Edit` Claude Code автоматически прогоняет Prettier по изменённому файлу (хук `PostToolUse` → `.claude/hooks/format-changed-file.mjs`).
+- **Do not edit by hand** generated files: `apps/web/.nuxt/**`, `apps/web/.output/**`, `apps/api/dist/**`.
+- Change shared ESLint and tsconfig rules in `packages/*`, framework-specific ones in the apps themselves.
+- Formatting — Prettier (`.prettierrc.json`), doesn't conflict with ESLint (`eslint-config-prettier`). After every `Write`/`Edit`, Claude Code automatically runs Prettier on the changed file (`PostToolUse` hook → `.claude/hooks/format-changed-file.mjs`).
 - `.npmrc`: `engine-strict=true`, `save-exact=false`.
-- Перед коммитом прогонять `npm run lint` и `npm run typecheck`.
-- **Git-хуки — Husky** (`.husky/`, инициализируется скриптом `prepare` при `npm install`). `pre-commit` прогоняет `npm run lint`, `npm run test` (unit по всем воркспейсам) и `npm run test:e2e -w @video-meetings/api` (e2e api); коммит не проходит, если что-то падает. E2e требуют поднятой БД и применённых миграций (`npm run db:up` + `npm run prisma:migrate -w @video-meetings/api`). Пропустить проверку разово — `git commit --no-verify`.
+- Run `npm run lint` and `npm run typecheck` before committing.
+- **Git hooks — Husky** (`.husky/`, initialized by the `prepare` script on `npm install`). `pre-commit` runs `npm run lint`, `npm run test` (unit tests across all workspaces) and `npm run test:e2e -w @video-meetings/api` (api e2e); the commit fails if anything fails. E2e tests require a running DB with migrations applied (`npm run db:up` + `npm run prisma:migrate -w @video-meetings/api`). To skip the check once — `git commit --no-verify`.
 
-## Поддержка документации
+## Token economy
 
-При изменении архитектуры проекта в том же изменении актуализируй документацию:
+- `git diff` always with `--unified=0`
+- `git log` always with `--oneline -10`
+- `gh issue list` always with `--json number,title`
+- `npm run test` always with `--silent`
+- `npx tsc --noEmit` always with `2>&1 | tail -5`
 
-- новый/переименованный/удалённый воркспейс в `apps/*` или `packages/*` — правь этот файл, `README.md` и создавай/удаляй соответствующий `apps/*/CLAUDE.md`;
-- смена стека, фреймворка или его мажорной версии — правь корневой `CLAUDE.md` и `CLAUDE.md` затронутого воркспейса;
-- изменение команд, скриптов, портов или переменных окружения — синхронизируй таблицы команд и разделы конфигурации во всех затронутых `CLAUDE.md` и в `README.md`;
-- изменение соглашений (структура модулей, расположение тестов, правила линта/tsconfig) — фиксируй в разделе «Соглашения» соответствующего `CLAUDE.md`.
+## Keeping documentation up to date
 
-Документация не должна отставать от кода: расхождение — это баг.
+When you change the project's architecture, update the documentation in the same change:
+
+- new/renamed/removed workspace in `apps/*` or `packages/*` — update this file, `README.md`, and create/remove the corresponding `apps/*/CLAUDE.md`;
+- stack, framework, or major version change — update the root `CLAUDE.md` and the `CLAUDE.md` of the affected workspace;
+- changes to commands, scripts, ports, or environment variables — update `package.json` (`scripts`), the command list in `README.md`, and the configuration sections in the `CLAUDE.md` of the affected workspaces (`apps/web/CLAUDE.md`, `apps/api/CLAUDE.md`);
+- changes to conventions (module structure, test locations, lint/tsconfig rules) — record them in the "Conventions" section of the corresponding `CLAUDE.md`.
+
+Documentation must not fall behind the code: a discrepancy is a bug.
