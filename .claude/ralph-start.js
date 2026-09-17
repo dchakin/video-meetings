@@ -5,6 +5,7 @@
 
 const { execFileSync } = require('child_process');
 const fs = require('fs');
+const os = require('os');
 const path = require('path');
 
 const ROOT = path.resolve(__dirname, '..');
@@ -44,27 +45,27 @@ function fill(template, vars) {
   return template.replace(/\{(\w+)\}/g, (match, key) => (key in vars ? String(vars[key]) : match));
 }
 
-function claude({ prompt, model, maxTurns, allowedTools }, description) {
+// captureOutput: вернуть итоговый ответ агента (stdout `claude -p`) вместо вывода в консоль.
+function claude(
+  { prompt, model, maxTurns, allowedTools, disallowedTools = [], captureOutput = false },
+  description,
+) {
   log(`▶️  ${description} (model=${model}, max-turns=${maxTurns})`);
   const start = Date.now();
   const seconds = () => ((Date.now() - start) / 1000).toFixed(1);
 
+  const args = ['-p', prompt, '--model', model, '--max-turns', String(maxTurns)];
+  args.push('--allowedTools', allowedTools.join(','));
+  if (disallowedTools.length) args.push('--disallowedTools', disallowedTools.join(','));
+
   try {
-    execFileSync(
-      'claude',
-      [
-        '-p',
-        prompt,
-        '--model',
-        model,
-        '--max-turns',
-        String(maxTurns),
-        '--allowedTools',
-        allowedTools.join(','),
-      ],
-      { stdio: 'inherit' },
-    );
+    const output = execFileSync('claude', args, {
+      encoding: 'utf8',
+      maxBuffer: 16 * 1024 * 1024,
+      stdio: ['ignore', captureOutput ? 'pipe' : 'inherit', 'inherit'],
+    });
     log(`✔️  Готово: ${description} (${seconds()}s)`);
+    return output?.trim() ?? '';
   } catch (error) {
     throw new StopError(`Ошибка: ${description} (${seconds()}s) — ${error.message}`);
   }
@@ -174,8 +175,8 @@ function runPhase(phase, index, config, budget) {
 
     claude(
       {
-        prompt: fill(config.work.prompt, { ...phase, issue: issue.number, title: issue.title }),
         ...config.work,
+        prompt: fill(config.work.prompt, { ...phase, issue: issue.number, title: issue.title }),
       },
       `Issue #${issue.number}: ${issue.title}`,
     );
@@ -194,10 +195,33 @@ function runPhase(phase, index, config, budget) {
 
   ensureActive();
   const pr = createPr(phase, config);
-  claude(
-    { prompt: fill(config.review.prompt, { ...phase, pr: pr.number }), ...config.review },
+  const review = claude(
+    {
+      ...config.review,
+      prompt: fill(config.review.prompt, { ...phase, pr: pr.number }),
+      captureOutput: true,
+    },
     `Code review PR #${pr.number}`,
   );
+  postReviewComment(pr.number, review);
+}
+
+// Комментарий публикует раннер, а не агент: агент может «отчитаться» о публикации, не сделав её.
+function postReviewComment(prNumber, review) {
+  if (!review) {
+    throw new StopError(
+      `Code review PR #${prNumber} вернул пустой ответ — комментарий не опубликован.`,
+    );
+  }
+
+  const bodyFile = path.join(os.tmpdir(), `ralph-review-${prNumber}-${Date.now()}.md`);
+  fs.writeFileSync(bodyFile, `## 🤖 Code review\n\n${review}\n`);
+  try {
+    const url = run('gh', ['pr', 'comment', String(prNumber), '--body-file', bodyFile]);
+    log(`💬 Ревью опубликовано: ${url}`);
+  } finally {
+    fs.rmSync(bodyFile, { force: true });
+  }
 }
 
 function main() {
