@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { CqrsModule } from '@nestjs/cqrs';
 import { AuthModule } from '../auth/auth.module';
 import { UsersModule } from '../users/users.module';
+import { AvatarsController } from './avatars.controller';
 import { ProfileController } from './profile.controller';
 
 /**
@@ -10,6 +11,6 @@ import { ProfileController } from './profile.controller';
  */
 @Module({
   imports: [CqrsModule, AuthModule, UsersModule],
-  controllers: [ProfileController],
+  controllers: [ProfileController, AvatarsController],
 })
 export class ProfileModule {}

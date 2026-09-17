@@ -15,9 +15,9 @@
 app/
   app.vue              — корневой компонент: <UApp> + <NuxtPage />
   app.config.ts        — тема Nuxt UI (ui.colors: primary=blue, neutral=slate)
-  pages/               — файловый роутинг (index — дашборд со списком встреч, register, login, meetings/[id] — страница встречи с блоком «Файлы встречи»)
+  pages/               — файловый роутинг (index — дашборд со списком встреч, register, login, meetings/[id] — страница встречи с блоком «Файлы встречи», profile — просмотр профиля текущего пользователя)
   components/           — auto-import компоненты (AuthBackdrop — фон страниц auth; MeetingCard — карточка встречи, ссылка на meetings/[id]; MeetingFileList — список файлов встречи с кнопкой скачивания)
-  composables/         — auto-import композаблы (useAuth — клиент API auth, JWT в cookie access_token + данные пользователя из payload; useApi — авторизованный $fetch к API; useMeetings — CRUD встреч + получение одной; useMeetingFiles — список файлов встречи и авторизованное скачивание через blob)
+  composables/         — auto-import композаблы (useAuth — клиент API auth, JWT в cookie access_token + данные пользователя из payload; useApi — авторизованный $fetch к API; useMeetings — CRUD встреч + получение одной; useMeetingFiles — список файлов встречи и авторизованное скачивание через blob; useProfile — профиль текущего пользователя: загрузка, смена имени/пароля/аватара)
   middleware/          — маршрутные middleware (guest — уводит авторизованного с /login и /register на /; auth — уводит гостя с приватных страниц на /login)
   assets/css/main.css  — глобальные стили / точка входа Tailwind + @theme (шрифты, --ui-radius)
 nuxt.config.ts         — конфиг Nuxt
