@@ -14,7 +14,18 @@ function useProfileState() {
 /** Работа с профилем текущего пользователя через авторизованный клиент API. */
 export function useProfile() {
   const api = useApi();
+  const config = useRuntimeConfig();
   const profile = useProfileState();
+
+  /** Имя может быть не заполнено — тогда показываем локальную часть email. */
+  const displayName = computed(
+    () => profile.value?.name || profile.value?.email.split('@')[0] || '',
+  );
+
+  /** `avatarUrl` от API — относительный путь, поэтому собираем абсолютный URL сами. */
+  const avatarSrc = computed(() =>
+    profile.value?.avatarUrl ? `${config.public.apiBase}${profile.value.avatarUrl}` : undefined,
+  );
 
   const load = async () => {
     profile.value = await api<UserProfile>('/profile');
@@ -36,5 +47,5 @@ export function useProfile() {
     return profile.value;
   };
 
-  return { profile, load, updateName, changePassword, updateAvatar };
+  return { profile, displayName, avatarSrc, load, updateName, changePassword, updateAvatar };
 }

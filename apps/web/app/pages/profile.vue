@@ -6,19 +6,11 @@ definePageMeta({ middleware: 'auth' });
 
 useHead({ title: 'Профиль' });
 
-const config = useRuntimeConfig();
-const { profile, load, updateName, updateAvatar, changePassword } = useProfile();
+const { profile, displayName, avatarSrc, load, updateName, updateAvatar, changePassword } =
+  useProfile();
 const toast = useToast();
 
 const { pending, error, refresh } = await useAsyncData('profile', () => load());
-
-/** Имя может быть не заполнено — тогда показываем локальную часть email. */
-const displayName = computed(() => profile.value?.name || profile.value?.email.split('@')[0] || '');
-
-/** `avatarUrl` от API — относительный путь, поэтому собираем абсолютный URL сами. */
-const avatarSrc = computed(() =>
-  profile.value?.avatarUrl ? `${config.public.apiBase}${profile.value.avatarUrl}` : undefined,
-);
 
 function extractErrorMessage(err: unknown, fallback: string): string {
   const error_ = err as FetchError<{ message?: string | string[] }>;

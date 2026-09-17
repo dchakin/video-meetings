@@ -6,8 +6,9 @@ definePageMeta({ middleware: 'auth' });
 
 useHead({ title: 'Мои встречи' });
 
-const { user, logout } = useAuth();
+const { logout } = useAuth();
 const { list, create } = useMeetings();
+const { displayName, avatarSrc, load: loadProfile } = useProfile();
 const toast = useToast();
 
 const {
@@ -16,6 +17,8 @@ const {
   error,
   refresh,
 } = await useAsyncData('meetings', () => list(), { default: () => [] });
+
+const { pending: profilePending } = await useAsyncData('profile', () => loadProfile());
 
 // API отдаёт встречи по убыванию `createdAt` — первые три и есть последние созданные.
 const recent = computed(() => meetings.value.slice(0, 3));
@@ -87,10 +90,15 @@ async function onCreate(event: FormSubmitEvent<CreateState>) {
         <h1 class="mt-2 font-display text-3xl font-semibold tracking-tight text-highlighted">
           Мои встречи
         </h1>
-        <p class="mt-2 flex items-center gap-1.5 text-sm text-muted">
-          <UIcon name="i-lucide-user" class="size-4" />
-          <span>Вы вошли как {{ user?.email }}</span>
-        </p>
+        <USkeleton v-if="profilePending" class="mt-2 h-6 w-32 rounded-full" />
+        <NuxtLink
+          v-else
+          to="/profile"
+          class="mt-2 inline-flex items-center gap-2 rounded-full text-sm text-muted transition-colors hover:text-highlighted"
+        >
+          <UAvatar :src="avatarSrc" :alt="displayName" icon="i-lucide-user" size="xs" />
+          <span>{{ displayName }}</span>
+        </NuxtLink>
       </div>
 
       <div class="flex flex-wrap items-center gap-2">
