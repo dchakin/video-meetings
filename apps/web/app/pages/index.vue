@@ -11,14 +11,14 @@ const { list, create } = useMeetings();
 const { displayName, avatarSrc, load: loadProfile } = useProfile();
 const toast = useToast();
 
-const {
-  data: meetings,
-  pending,
-  error,
-  refresh,
-} = await useAsyncData('meetings', () => list(), { default: () => [] });
-
-const { pending: profilePending } = await useAsyncData('profile', () => loadProfile());
+// Встречи и профиль независимы — грузим параллельно.
+const [
+  { data: meetings, pending, error, refresh },
+  { pending: profilePending, error: profileError, refresh: refreshProfile },
+] = await Promise.all([
+  useAsyncData('meetings', () => list(), { default: () => [] }),
+  useAsyncData('profile', () => loadProfile()),
+]);
 
 // API отдаёт встречи по убыванию `createdAt` — первые три и есть последние созданные.
 const recent = computed(() => meetings.value.slice(0, 3));
@@ -91,6 +91,17 @@ async function onCreate(event: FormSubmitEvent<CreateState>) {
           Мои встречи
         </h1>
         <USkeleton v-if="profilePending" class="mt-2 h-6 w-32 rounded-full" />
+        <div v-else-if="profileError" class="mt-2 flex items-center gap-2 text-sm text-error">
+          <UIcon name="i-lucide-circle-alert" class="size-4" />
+          <span>Не удалось загрузить профиль</span>
+          <UButton
+            label="Повторить"
+            color="error"
+            variant="link"
+            size="xs"
+            @click="refreshProfile()"
+          />
+        </div>
         <NuxtLink
           v-else
           to="/profile"
