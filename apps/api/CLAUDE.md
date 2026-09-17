@@ -48,10 +48,12 @@ src/
     queries/
       find-user-by-email.query.ts / find-user-by-email.handler.ts — ищет User по email, возвращает User | null
       get-user-profile.query.ts / get-user-profile.handler.ts — возвращает UserProfile по userId (404, если пользователя нет)
+      get-avatar-file.query.ts / get-avatar-file.handler.ts — по имени файла из `avatarUrl` возвращает { storagePath, mimeType }; имя строго `<uuid>.<jpg|png|webp>` (защита от `../`), иначе или при отсутствии файла — 404
       index.ts         — USERS_QUERY_HANDLERS + реэкспорт запросов
   profile/             — HTTP-слой профиля пользователя (CQRS-диспатч в `users`), защищён `JwtAuthGuard`
-    profile.module.ts     — импортирует CqrsModule, AuthModule (ради JwtAuthGuard) и UsersModule (ради обработчиков команд/запросов `users`)
+    profile.module.ts     — контроллеры ProfileController и AvatarsController; импортирует CqrsModule, AuthModule (ради JwtAuthGuard) и UsersModule (ради обработчиков команд/запросов `users`)
     profile.controller.ts — GET /profile → `GetUserProfileQuery` через `QueryBus`; PATCH /profile (имя, DTO `UpdateProfileNameDto`) → `UpdateUserNameCommand`; PATCH /profile/password (DTO `ChangePasswordDto`) → `ChangePasswordCommand`; POST /profile/avatar (multipart, поле `file`, `FileInterceptor` с лимитом `getAvatarMaxSizeBytes()`) → `UpdateAvatarCommand` через `CommandBus`; без файла — 400 до диспатча команды
+    avatars.controller.ts — GET /avatars/:fileName → `GetAvatarFileQuery`, отдаёт файл через `StreamableFile` (`Content-Type` по расширению, `nosniff`, `Cache-Control: immutable`). **Без** `JwtAuthGuard`: `<img src>` не шлёт `Authorization`, имена файлов — случайные UUID
     dto/update-profile-name.dto.ts — { name } (1–100 символов)
     dto/change-password.dto.ts — { oldPassword, newPassword } (newPassword — 8–72 символов)
   meeting/             — обычный модуль Nest (controller + service), защищён `JwtAuthGuard`
@@ -70,7 +72,7 @@ prisma/
   schema.prisma      — datasource (env DATABASE_URL) + модели User, Meeting (owner → User), MeetingFile (meeting → Meeting, uploadedBy → User)
   migrations/        — SQL-миграции Prisma
 test/
-  app.e2e-spec.ts, auth.e2e-spec.ts, meeting.e2e-spec.ts, meeting-file.e2e-spec.ts, jest-e2e.json
+  app.e2e-spec.ts, auth.e2e-spec.ts, avatars.e2e-spec.ts, meeting.e2e-spec.ts, meeting-file.e2e-spec.ts, jest-e2e.json
 nest-cli.json        — sourceRoot: src, deleteOutDir: true
 ```
 

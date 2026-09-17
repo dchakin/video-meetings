@@ -7,7 +7,7 @@ import { USERS_QUERY_HANDLERS } from './queries';
  * Модуль пользователей: создание, поиск и профиль пользователя.
  * Наружу общается только через CQRS (`CreateUserCommand`, `FindUserByEmailQuery`,
  * `GetUserProfileQuery`, `UpdateUserNameCommand`, `ChangePasswordCommand`,
- * `UpdateAvatarCommand`) — своих провайдеров не экспортирует.
+ * `UpdateAvatarCommand`, `GetAvatarFileQuery`) — своих провайдеров не экспортирует.
  * Потребители — модули `auth` и `profile`.
  */
 @Module({
