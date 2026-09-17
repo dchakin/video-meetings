@@ -48,24 +48,11 @@ npm run prisma:migrate -w @video-meetings/api   # применит миграц�
 
 ## Команды (из корня)
 
-| Команда                | Действие                                                |
-| ---------------------- | ------------------------------------------------------- |
-| `npm run dev`          | Параллельный запуск web (`:3000`) и api (`:4000`)       |
-| `npm run dev:web`      | Только Nuxt                                             |
-| `npm run dev:api`      | Только Nest.js                                          |
-| `npm run build`        | Сборка всех воркспейсов                                 |
-| `npm run start`        | Прод-запуск web (`nuxt preview`) и api                  |
-| `npm run lint`         | ESLint по всем воркспейсам                              |
-| `npm run lint:fix`     | ESLint с автофиксом                                     |
-| `npm run typecheck`    | Проверка типов (`tsc --noEmit`) по всем воркспейсам     |
-| `npm run test`         | Тесты по всем воркспейсам                               |
-| `npm run format`       | Prettier (запись) по всему репозиторию                  |
-| `npm run format:check` | Prettier (только проверка)                              |
-| `npm run db:up`        | Поднять PostgreSQL в Docker (`docker compose up -d db`) |
-| `npm run db:down`      | Остановить и удалить контейнер БД                       |
-| `npm run db:logs`      | Логи контейнера БД                                      |
+Полный список — в `scripts` файла `package.json`. Основные: `dev` (параллельно web `:3000` и api `:4000`,
+`dev:web`/`dev:api` — по отдельности), `build`, `start` (прод), `lint`/`lint:fix`, `typecheck`, `test`,
+`format`/`format:check`, `db:up`/`db:down`/`db:logs`.
 
-Для отдельного воркспейса: `npm run <script> -w @video-meetings/web`.
+Для отдельного воркспейса: `npm run <script> -w @video-meetings/web` (или `@video-meetings/api`).
 
 ## Тесты
 
