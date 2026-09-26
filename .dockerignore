@@ -1,0 +1,12 @@
+**/node_modules
+**/dist
+**/.nuxt
+**/.output
+**/coverage
+.git
+.claude
+.husky
+**/*.env
+**/.env.*
+apps/api/storage
+apps/web/storage
