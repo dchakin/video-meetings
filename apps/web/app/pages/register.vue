@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import type { FetchError } from 'ofetch';
-import type { FormError, FormErrorEvent, FormSubmitEvent } from '@nuxt/ui';
+import type { FormError, FormSubmitEvent } from '@nuxt/ui';
 
 definePageMeta({ middleware: 'guest' });
 
@@ -8,6 +8,7 @@ useHead({ title: 'Регистрация' });
 
 const { register } = useAuth();
 const toast = useToast();
+const { serverError, serverErrorRef, setServerError, onFormError } = useFormServerError();
 
 interface RegisterState {
   email: string;
@@ -23,34 +24,6 @@ const state = reactive<RegisterState>({
 
 const showPassword = ref(false);
 const loading = ref(false);
-const serverError = ref<string | null>(null);
-const serverErrorRef = ref<HTMLElement | null>(null);
-
-// Индикатор надёжности пароля: 0 — пусто, 1 — слабый … 4 — надёжный.
-const passwordStrength = computed(() => {
-  const value = state.password;
-  if (!value) return 0;
-
-  let score = 0;
-  if (value.length >= 8) score++;
-  if (value.length >= 12) score++;
-  if (/\d/.test(value) && /[a-zA-Zа-яА-ЯёЁ]/.test(value)) score++;
-  if (/[^\w\s]/.test(value) || (/[a-zа-яё]/.test(value) && /[A-ZА-ЯЁ]/.test(value))) score++;
-
-  return Math.min(score, 4);
-});
-
-const strengthMeta = computed(() => {
-  return (
-    [
-      { label: 'Слабый', color: 'bg-error' },
-      { label: 'Слабый', color: 'bg-error' },
-      { label: 'Средний', color: 'bg-warning' },
-      { label: 'Хороший', color: 'bg-warning' },
-      { label: 'Надёжный', color: 'bg-success' },
-    ][passwordStrength.value] ?? { label: 'Слабый', color: 'bg-error' }
-  );
-});
 
 // Правила должны совпадать с AuthCredentialsDto в API: валидный email,
 // пароль от 8 до 72 символов.
@@ -80,17 +53,6 @@ function validate(s: RegisterState): FormError[] {
   return errors;
 }
 
-// Неудачная валидация: перевести фокус на первое поле с ошибкой.
-// nextTick — чтобы поля успели выйти из disabled после снятия loading у UForm.
-async function onError(event: FormErrorEvent) {
-  const id = event.errors?.[0]?.id;
-  if (!id) return;
-  await nextTick();
-  const el = document.getElementById(id);
-  el?.focus();
-  el?.scrollIntoView({ behavior: 'smooth', block: 'center' });
-}
-
 async function onSubmit(event: FormSubmitEvent<RegisterState>) {
   serverError.value = null;
   loading.value = true;
@@ -105,17 +67,11 @@ async function onSubmit(event: FormSubmitEvent<RegisterState>) {
     await navigateTo('/');
   } catch (error) {
     const err = error as FetchError<{ message?: string | string[] }>;
-    if (err.statusCode === 409) {
-      serverError.value = 'Пользователь с таким email уже зарегистрирован';
-    } else {
-      const message = err.data?.message;
-      serverError.value = Array.isArray(message)
-        ? message.join(', ')
-        : (message ?? 'Не удалось выполнить регистрацию. Попробуйте позже.');
-    }
-    await nextTick();
-    serverErrorRef.value?.focus();
-    serverErrorRef.value?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    await setServerError(
+      err.statusCode === 409
+        ? 'Пользователь с таким email уже зарегистрирован'
+        : extractErrorMessage(error, 'Не удалось выполнить регистрацию. Попробуйте позже.'),
+    );
   } finally {
     loading.value = false;
   }
@@ -154,7 +110,7 @@ async function onSubmit(event: FormSubmitEvent<RegisterState>) {
           :validate="validate"
           class="mt-8 space-y-5"
           @submit="onSubmit"
-          @error="onError"
+          @error="onFormError"
         >
           <div
             v-if="serverError"
@@ -208,20 +164,8 @@ async function onSubmit(event: FormSubmitEvent<RegisterState>) {
               </template>
             </UInput>
 
-            <template v-if="passwordStrength > 0" #help>
-              <span class="flex flex-col gap-1.5">
-                <span class="flex gap-1" aria-hidden="true">
-                  <span
-                    v-for="i in 4"
-                    :key="i"
-                    class="h-1 flex-1 rounded-full transition-colors"
-                    :class="i <= passwordStrength ? strengthMeta.color : 'bg-accented'"
-                  />
-                </span>
-                <span role="status" aria-live="polite">
-                  Надёжность пароля: {{ strengthMeta.label }}
-                </span>
-              </span>
+            <template #help>
+              <PasswordStrengthMeter :password="state.password" />
             </template>
           </UFormField>
 

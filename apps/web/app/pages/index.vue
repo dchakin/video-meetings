@@ -1,5 +1,4 @@
 <script setup lang="ts">
-import type { FetchError } from 'ofetch';
 import type { FormError, FormSubmitEvent } from '@nuxt/ui';
 
 definePageMeta({ middleware: 'auth' });
@@ -69,10 +68,9 @@ async function onCreate(event: FormSubmitEvent<CreateState>) {
     resetForm();
     await refresh();
   } catch (err) {
-    const message = (err as FetchError<{ message?: string | string[] }>).data?.message;
     toast.add({
       title: 'Не удалось создать встречу',
-      description: Array.isArray(message) ? message.join(', ') : message,
+      description: extractErrorMessage(err, 'Попробуйте позже.'),
       color: 'error',
       icon: 'i-lucide-circle-alert',
     });

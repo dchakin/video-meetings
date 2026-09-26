@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import type { FetchError } from 'ofetch';
-import type { FormError, FormErrorEvent, FormSubmitEvent } from '@nuxt/ui';
+import type { FormError, FormSubmitEvent } from '@nuxt/ui';
 
 definePageMeta({ middleware: 'guest' });
 
@@ -8,6 +8,7 @@ useHead({ title: 'Вход' });
 
 const { login } = useAuth();
 const toast = useToast();
+const { serverError, serverErrorRef, setServerError, onFormError } = useFormServerError();
 
 interface LoginState {
   email: string;
@@ -18,8 +19,6 @@ const state = reactive<LoginState>({ email: '', password: '' });
 
 const showPassword = ref(false);
 const loading = ref(false);
-const serverError = ref<string | null>(null);
-const serverErrorRef = ref<HTMLElement | null>(null);
 
 function validate(s: LoginState): FormError[] {
   const errors: FormError[] = [];
@@ -37,17 +36,6 @@ function validate(s: LoginState): FormError[] {
   return errors;
 }
 
-// Неудачная валидация: перевести фокус на первое поле с ошибкой.
-// nextTick — чтобы поля успели выйти из disabled после снятия loading у UForm.
-async function onError(event: FormErrorEvent) {
-  const id = event.errors?.[0]?.id;
-  if (!id) return;
-  await nextTick();
-  const el = document.getElementById(id);
-  el?.focus();
-  el?.scrollIntoView({ behavior: 'smooth', block: 'center' });
-}
-
 async function onSubmit(event: FormSubmitEvent<LoginState>) {
   serverError.value = null;
   loading.value = true;
@@ -61,17 +49,11 @@ async function onSubmit(event: FormSubmitEvent<LoginState>) {
     await navigateTo('/');
   } catch (error) {
     const err = error as FetchError<{ message?: string | string[] }>;
-    if (err.statusCode === 401) {
-      serverError.value = 'Неверный email или пароль';
-    } else {
-      const message = err.data?.message;
-      serverError.value = Array.isArray(message)
-        ? message.join(', ')
-        : (message ?? 'Не удалось выполнить вход. Попробуйте позже.');
-    }
-    await nextTick();
-    serverErrorRef.value?.focus();
-    serverErrorRef.value?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    await setServerError(
+      err.statusCode === 401
+        ? 'Неверный email или пароль'
+        : extractErrorMessage(error, 'Не удалось выполнить вход. Попробуйте позже.'),
+    );
   } finally {
     loading.value = false;
   }
@@ -106,7 +88,7 @@ async function onSubmit(event: FormSubmitEvent<LoginState>) {
           :validate="validate"
           class="mt-8 space-y-5"
           @submit="onSubmit"
-          @error="onError"
+          @error="onFormError"
         >
           <div
             v-if="serverError"
