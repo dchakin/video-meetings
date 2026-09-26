@@ -35,7 +35,10 @@ export class JwtAuthGuard implements CanActivate {
       throw new UnauthorizedException('Недействительный токен доступа');
     }
 
-    const user = await this.prisma.user.findUnique({ where: { id: payload.sub } });
+    const user = await this.prisma.user.findUnique({
+      where: { id: payload.sub },
+      select: { tokenVersion: true },
+    });
     if (!user || user.tokenVersion !== payload.tokenVersion) {
       throw new UnauthorizedException('Недействительный токен доступа');
     }
