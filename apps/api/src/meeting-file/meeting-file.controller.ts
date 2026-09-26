@@ -5,6 +5,7 @@ import {
   HttpCode,
   HttpStatus,
   Param,
+  ParseUUIDPipe,
   Post,
   Res,
   StreamableFile,
@@ -28,10 +29,12 @@ export class MeetingFileController {
   constructor(private readonly files: MeetingFileService) {}
 
   @Post()
-  @UseInterceptors(FileInterceptor('file', { limits: { fileSize: getFileMaxSizeBytes() } }))
+  @UseInterceptors(
+    FileInterceptor('file', { limits: { fileSize: getFileMaxSizeBytes(), files: 1 } }),
+  )
   upload(
     @CurrentUser() user: JwtPayload,
-    @Param('meetingId') meetingId: string,
+    @Param('meetingId', ParseUUIDPipe) meetingId: string,
     @UploadedFile() file: Express.Multer.File | undefined,
   ): Promise<MeetingFileResponse> {
     return this.files.upload(user, meetingId, file);
@@ -40,7 +43,7 @@ export class MeetingFileController {
   @Get()
   findAll(
     @CurrentUser() user: JwtPayload,
-    @Param('meetingId') meetingId: string,
+    @Param('meetingId', ParseUUIDPipe) meetingId: string,
   ): Promise<MeetingFileResponse[]> {
     return this.files.listForMember(user, meetingId);
   }
@@ -48,13 +51,14 @@ export class MeetingFileController {
   @Get(':fileId/download')
   async download(
     @CurrentUser() user: JwtPayload,
-    @Param('meetingId') meetingId: string,
-    @Param('fileId') fileId: string,
+    @Param('meetingId', ParseUUIDPipe) meetingId: string,
+    @Param('fileId', ParseUUIDPipe) fileId: string,
     @Res({ passthrough: true }) res: Response,
   ): Promise<StreamableFile> {
     const file = await this.files.getForMember(user, meetingId, fileId);
     res.set({
       'Content-Type': file.mimeType,
+      'X-Content-Type-Options': 'nosniff',
       'Content-Disposition': `attachment; filename*=UTF-8''${encodeURIComponent(file.fileName)}`,
     });
     return new StreamableFile(createReadStream(file.storagePath));
@@ -64,8 +68,8 @@ export class MeetingFileController {
   @HttpCode(HttpStatus.NO_CONTENT)
   async remove(
     @CurrentUser() user: JwtPayload,
-    @Param('meetingId') meetingId: string,
-    @Param('fileId') fileId: string,
+    @Param('meetingId', ParseUUIDPipe) meetingId: string,
+    @Param('fileId', ParseUUIDPipe) fileId: string,
   ): Promise<void> {
     await this.files.deleteAsOwner(user, meetingId, fileId);
   }

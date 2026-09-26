@@ -1,5 +1,6 @@
 import { IQueryHandler, QueryHandler } from '@nestjs/cqrs';
 import { User } from '@prisma/client';
+import { normalizeEmail } from '../../common/email.util';
 import { PrismaService } from '../../prisma/prisma.service';
 import { FindUserByEmailQuery } from './find-user-by-email.query';
 
@@ -8,6 +9,6 @@ export class FindUserByEmailHandler implements IQueryHandler<FindUserByEmailQuer
   constructor(private readonly prisma: PrismaService) {}
 
   execute({ email }: FindUserByEmailQuery): Promise<User | null> {
-    return this.prisma.user.findUnique({ where: { email } });
+    return this.prisma.user.findUnique({ where: { email: normalizeEmail(email) } });
   }
 }

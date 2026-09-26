@@ -13,6 +13,8 @@ model User {
   passwordHash  String
   name          String?
   avatarUrl     String?
+  // Увеличивается при смене пароля — делает недействительными все ранее выданные JWT.
+  tokenVersion  Int           @default(0)
   createdAt     DateTime      @default(now())
   updatedAt     DateTime      @updatedAt
   meetings      Meeting[]

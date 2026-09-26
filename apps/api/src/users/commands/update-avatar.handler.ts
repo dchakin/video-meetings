@@ -30,8 +30,10 @@ export class UpdateAvatarHandler implements ICommandHandler<UpdateAvatarCommand>
       throw new BadRequestException('Неверный формат файла. Разрешены: JPEG, PNG, WebP');
     }
 
-    if (file.size > getAvatarMaxSizeBytes()) {
-      throw new BadRequestException('Файл слишком большой. Максимум 5 МБ');
+    const maxSizeBytes = getAvatarMaxSizeBytes();
+    if (file.size > maxSizeBytes) {
+      const maxSizeMb = Math.floor(maxSizeBytes / (1024 * 1024));
+      throw new BadRequestException(`Файл слишком большой. Максимум ${maxSizeMb} МБ`);
     }
 
     await fs.mkdir(this.storageDir, { recursive: true });

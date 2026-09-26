@@ -9,6 +9,7 @@
 - `tsconfig.json` расширяет `@video-meetings/tsconfig/nestjs.json`.
 - **Prisma 6** (`@prisma/client`, dev-зависимость `prisma`) — ORM поверх PostgreSQL. Схема — `prisma/schema.prisma`, миграции — `prisma/migrations/`.
 - **Auth**: `@nestjs/cqrs` (CQRS — команды/обработчики), `@nestjs/jwt` (JWT), `@nestjs/config` (env), `bcryptjs` (хеш паролей), `class-validator` / `class-transformer` (валидация DTO).
+- **Безопасность**: `helmet` (security-заголовки, см. `main.ts`), `@nestjs/throttler` (rate limiting, глобальный `APP_GUARD` + `@Throttle` на auth/смене пароля).
 - Держать мажоры на CJS-совместимых версиях: `@nestjs/config@4`, `@nestjs/jwt@11`, `@nestjs/cqrs@11`, `@prisma/client@6` (более новые ломают ts-jest CJS / требуют `prisma.config.ts`).
 - Тесты — Jest + ts-jest (конфиг в `package.json`, `rootDir: src`, `*.spec.ts`); e2e — `test/jest-e2e.json`. E2e поднимают реальное приложение и ходят в БД из `docker-compose.yml` — перед прогоном нужен `npm run db:up` и применённые миграции.
 
@@ -16,33 +17,37 @@
 
 ```
 src/
-  main.ts            — bootstrap, CORS (env WEB_ORIGIN), слушает PORT (по умолчанию 4000)
-  app.module.ts      — корневой модуль: ConfigModule (global), PrismaModule, AuthModule, MeetingModule, глобальный ValidationPipe через APP_PIPE
+  main.ts            — bootstrap: отключает встроенный body-parser Nest и сам ограничивает JSON-тело (1mb), `helmet()` (CSP выключен — чистый API; CORP: cross-origin — фронтенд на другом origin грузит аватары/файлы), CORS (env WEB_ORIGIN, ограничен по methods/headers), слушает PORT (по умолчанию 4000)
+  app.module.ts      — корневой модуль: ConfigModule (global), ThrottlerModule (глобальный rate limit, выключен при NODE_ENV=test), PrismaModule, AuthModule, MeetingModule, глобальный ValidationPipe через APP_PIPE, глобальный ThrottlerGuard через APP_GUARD
   app.controller.ts  — GET / → AppService.getHello()
   app.service.ts
+  common/
+    email.util.ts    — normalizeEmail(email) (trim + lowercase) — применяется во всех DTO/хендлерах, где email сравнивается или используется как ключ (регистрация, логин, участники встречи)
+    password.util.ts — BCRYPT_ROUNDS (общий cost factor для register/смены пароля)
   prisma/
     prisma.module.ts   — @Global-модуль, экспортирует PrismaService
     prisma.service.ts  — PrismaClient + connect/disconnect по хукам жизненного цикла
   auth/                — CQRS: авторизация (хеш/сверка пароля, выпуск и проверка JWT). Пользователей не трогает — делегирует модулю `users` через CQRS
-    auth.module.ts     — CqrsModule + UsersModule + JwtModule (secret/expiresIn из env), регистрирует command-обработчики и TokenService
-    auth.controller.ts — POST /auth/register → RegisterCommand, POST /auth/login → LoginCommand
-    auth.types.ts      — AuthResult, JwtPayload
+    auth.module.ts     — CqrsModule + UsersModule + JwtModule (secret через `getJwtSecretOrThrow`, expiresIn из env), регистрирует command-обработчики и TokenService
+    auth.controller.ts — POST /auth/register → RegisterCommand, POST /auth/login → LoginCommand; оба под `@Throttle` (10 запросов/мин с одного IP)
+    auth.types.ts      — AuthResult, JwtPayload (включает `tokenVersion` — сверяется в JwtAuthGuard с БД, отзывает токены при смене пароля)
+    jwt-secret.util.ts — getJwtSecretOrThrow(config): требует явный `JWT_SECRET` ≥ 32 символов, без дефолта — иначе приложение не стартует
     commands/
       register.command.ts / register.handler.ts — bcrypt-хеш пароля → CreateUserCommand (CommandBus) → выдаёт JWT
-      login.command.ts / login.handler.ts       — FindUserByEmailQuery (QueryBus) → сверяет bcrypt-хеш (401) → выдаёт JWT
+      login.command.ts / login.handler.ts       — FindUserByEmailQuery (QueryBus) → сверяет bcrypt-хеш (401), при отсутствии пользователя сравнивает с фиктивным хешем той же длины (защита от user enumeration по времени ответа) → выдаёт JWT
       index.ts         — AUTH_COMMAND_HANDLERS + реэкспорт команд
     tokens/token.service.ts — общий выпуск JWT (jwt.signAsync)
-    dto/auth-credentials.dto.ts — { email, password }, правила class-validator
-    guards/jwt-auth.guard.ts — проверяет `Authorization: Bearer <JWT>`, кладёт payload в `request.user` (401 иначе); экспортируется вместе с JwtModule
+    dto/auth-credentials.dto.ts — { email, password }, правила class-validator; email нормализуется через `normalizeEmail`, пароль — 8–72 БАЙТ (`@IsByteLength`, не символов — bcrypt учитывает только первые 72 байта)
+    guards/jwt-auth.guard.ts — проверяет `Authorization: Bearer <JWT>` и что `tokenVersion` из токена совпадает с текущим у пользователя в БД (иначе 401 — отзыв токенов при смене пароля), кладёт payload в `request.user`; экспортируется вместе с JwtModule
     current-user.decorator.ts — `@CurrentUser()`: достаёт JwtPayload из запроса
   users/               — CQRS: единственный владелец таблицы User (создание, поиск, профиль, смена имени и пароля). Провайдеров наружу не экспортирует — только команды/запросы
     users.module.ts    — CqrsModule, регистрирует command- и query-обработчики
     users.types.ts     — UserProfile (публичная форма без passwordHash), AvatarFileInput (файл аватара независимо от транспорта) и toUserProfile(user) (имя по умолчанию — локальная часть email)
     avatar-storage.config.ts — getAvatarStorageDir() / getAvatarMaxSizeBytes() (env AVATAR_STORAGE_DIR / AVATAR_MAX_SIZE_BYTES, дефолт 5 МБ), ALLOWED_AVATAR_MIME_TYPES (JPEG/PNG/WebP), AVATAR_MIME_TYPE_EXTENSIONS (mimetype → расширение файла на диске), AVATAR_URL_PREFIX (`/avatars/`)
     commands/
-      create-user.command.ts / create-user.handler.ts — создаёт User по { email, passwordHash } (409 при дубле)
+      create-user.command.ts / create-user.handler.ts — создаёт User по { email (нормализован через `normalizeEmail`), passwordHash } напрямую через `create` (без предварительного `findUnique` — избегает гонки параллельных регистраций), 409 при перехваченном P2002 (уникальный индекс по email)
       update-user-name.command.ts / update-user-name.handler.ts — обновляет name по userId, возвращает UserProfile (404, если пользователя нет)
-      change-password.command.ts / change-password.handler.ts — сверяет старый пароль (bcrypt, 401 при несовпадении), валидирует новый (8–72 символов, 400 иначе), хеширует и обновляет passwordHash (404, если пользователя нет)
+      change-password.command.ts / change-password.handler.ts — сверяет старый пароль (bcrypt, 401 при несовпадении; длина/байтовый размер новых паролей проверены на уровне ChangePasswordDto), хеширует и обновляет passwordHash вместе с инкрементом `tokenVersion` (отзывает все ранее выданные JWT; 404, если пользователя нет)
       update-avatar.command.ts / update-avatar.handler.ts — валидирует формат (JPEG/PNG/WebP) и размер (до 5 МБ, 400 иначе) присланного файла, сохраняет его в `AVATAR_STORAGE_DIR` под случайным именем (`randomUUID` + расширение по проверенному mimetype, не по имени файла от клиента — иначе можно сохранить произвольные байты под расширением вроде `.html`), обновляет `avatarUrl` (404, если пользователя нет; при ошибке записи в БД сохранённый файл удаляется, чтобы не оставлять сироту), затем удаляет предыдущий файл аватара при замене (по старому `avatarUrl`, ошибка отсутствия файла игнорируется)
       index.ts         — USERS_COMMAND_HANDLERS + реэкспорт команд
     queries/
@@ -55,21 +60,21 @@ src/
     profile.controller.ts — GET /profile → `GetUserProfileQuery` через `QueryBus`; PATCH /profile (имя, DTO `UpdateProfileNameDto`) → `UpdateUserNameCommand`; PATCH /profile/password (DTO `ChangePasswordDto`) → `ChangePasswordCommand`; POST /profile/avatar (multipart, поле `file`, `FileInterceptor` с лимитом `getAvatarMaxSizeBytes()`) → `UpdateAvatarCommand` через `CommandBus`; без файла — 400 до диспатча команды
     avatars.controller.ts — GET /avatars/:fileName → `GetAvatarFileQuery`, отдаёт файл через `StreamableFile` (`Content-Type` по расширению, `nosniff`, `Cache-Control: immutable`). **Без** `JwtAuthGuard`: `<img src>` не шлёт `Authorization`, имена файлов — случайные UUID
     dto/update-profile-name.dto.ts — { name } (1–100 символов)
-    dto/change-password.dto.ts — { oldPassword, newPassword } (newPassword — 8–72 символов)
+    dto/change-password.dto.ts — { oldPassword, newPassword } (newPassword — 8–72 БАЙТ, `@IsByteLength`)
   meeting/             — обычный модуль Nest (controller + service), защищён `JwtAuthGuard`
     meeting.module.ts     — импортирует AuthModule (ради JwtAuthGuard/JwtModule)
-    meeting.controller.ts — POST /meetings, GET /meetings, GET /meetings/:id; все под `@UseGuards(JwtAuthGuard)`
-    meeting.service.ts    — CRUD через Prisma; список и создание скоупятся по `ownerId`, получение одной встречи (`findOneForMember`) доступно владельцу и участникам (сверка по email из JwtPayload, как в meeting-file) — 404 на недоступную/отсутствующую
-    dto/create-meeting.dto.ts — { title, date (ISO), participants: string[] }, правила class-validator
+    meeting.controller.ts — POST /meetings, GET /meetings, GET /meetings/:id (`id` — `ParseUUIDPipe`); все под `@UseGuards(JwtAuthGuard)`
+    meeting.service.ts    — CRUD через Prisma; список и создание скоупятся по `ownerId`, получение одной встречи (`findOneForMember`) доступно владельцу и участникам (сверка по email из JwtPayload, как в meeting-file) — 404 на недоступную/отсутствующую. **Известный риск** (сознательно не устранён — требует редизайна с подтверждением email/инвайт-токенами): участник добавляется по email без проверки владения им, поэтому пользователь, зарегистрировавшийся на ещё не занятый email участника после того как его туда вписал владелец встречи, получает доступ к встрече и её файлам
+    dto/create-meeting.dto.ts — { title (≤200 символов), date (ISO), participants: string[] (email, ≤50 штук, нормализуются через `normalizeEmail`) }, правила class-validator
   meeting-file/        — обычный модуль Nest (controller + service), защищён `JwtAuthGuard`
     meeting-file.module.ts     — импортирует AuthModule
-    meeting-file.controller.ts — POST /meetings/:meetingId/files (multipart, поле `file`, `FileInterceptor` с лимитом `FILE_MAX_SIZE_BYTES`), GET /meetings/:meetingId/files, GET /meetings/:meetingId/files/:fileId/download (побайтовая отдача через `StreamableFile`), DELETE /meetings/:meetingId/files/:fileId (204 No Content); под `@UseGuards(JwtAuthGuard)`
-    meeting-file.service.ts    — только владелец встречи может загружать и удалять; список файлов и скачивание доступны владельцу и участникам (сверка по email из JwtPayload); недоступная/чужая встреча, чужой файл или недостающие права на удаление → 404 (как в `meeting`, скрывает существование). Файл читается в память (multer memory storage — лимит размера отклоняет запрос до записи на диск), затем пишется в `FILE_STORAGE_DIR` под случайным именем (`randomUUID` + исходное расширение) и фиксируется в таблице `MeetingFile`; удаление стирает запись в БД и файл с диска (`fs.unlink`, ошибка отсутствия файла игнорируется)
-    file-storage.config.ts     — `getFileStorageDir()` / `getFileMaxSizeBytes()`, читают `FILE_STORAGE_DIR` / `FILE_MAX_SIZE_BYTES` из `process.env`
+    meeting-file.controller.ts — POST /meetings/:meetingId/files (multipart, поле `file`, `FileInterceptor` с лимитом `FILE_MAX_SIZE_BYTES` и `files: 1`), GET /meetings/:meetingId/files, GET /meetings/:meetingId/files/:fileId/download (побайтовая отдача через `StreamableFile`, `Content-Type` + `X-Content-Type-Options: nosniff`), DELETE /meetings/:meetingId/files/:fileId (204 No Content); все параметры-id — `ParseUUIDPipe`; под `@UseGuards(JwtAuthGuard)`
+    meeting-file.service.ts    — только владелец встречи может загружать и удалять; список файлов и скачивание доступны владельцу и участникам (сверка по email из JwtPayload); недоступная/чужая встреча, чужой файл или недостающие права на удаление → 404 (как в `meeting`, скрывает существование). Загрузка: тип файла проверяется по белому списку `ALLOWED_MEETING_FILE_MIME_TYPES` (400 иначе — HTML/SVG сознательно исключены), лимит числа/суммарного объёма файлов на встречу — `assertQuotaOrThrow` (`MAX_FILES_PER_MEETING` / `MAX_TOTAL_SIZE_BYTES_PER_MEETING`). Файл читается в память (multer memory storage — лимит размера отклоняет запрос до записи на диск), затем пишется в `FILE_STORAGE_DIR` под случайным именем (`randomUUID` + расширение по проверенному mimetype из `MEETING_FILE_MIME_TYPE_EXTENSIONS`, не по имени файла от клиента) и фиксируется в таблице `MeetingFile`; удаление стирает запись в БД и файл с диска (`fs.unlink`, ошибка отсутствия файла игнорируется)
+    file-storage.config.ts     — `getFileStorageDir()` / `getFileMaxSizeBytes()` (env `FILE_STORAGE_DIR` / `FILE_MAX_SIZE_BYTES`), `ALLOWED_MEETING_FILE_MIME_TYPES` / `MEETING_FILE_MIME_TYPE_EXTENSIONS` (белый список типов и расширение на диске по mimetype), `MAX_FILES_PER_MEETING` / `MAX_TOTAL_SIZE_BYTES_PER_MEETING` (квота на встречу)
     meeting-file.types.ts      — `MeetingFileResponse` — публичная форма файла без внутреннего `storagePath`
   *.spec.ts          — unit-тесты рядом с кодом
 prisma/
-  schema.prisma      — datasource (env DATABASE_URL) + модели User, Meeting (owner → User), MeetingFile (meeting → Meeting, uploadedBy → User)
+  schema.prisma      — datasource (env DATABASE_URL) + модели User (включая `tokenVersion` — отзыв JWT при смене пароля), Meeting (owner → User), MeetingFile (meeting → Meeting, uploadedBy → User)
   migrations/        — SQL-миграции Prisma
 test/
   app.e2e-spec.ts, auth.e2e-spec.ts, avatars.e2e-spec.ts, meeting.e2e-spec.ts, meeting-file.e2e-spec.ts, jest-e2e.json
@@ -98,9 +103,10 @@ nest-cli.json        — sourceRoot: src, deleteOutDir: true
 
 - Порт — `PORT` (по умолчанию 4000). Пример env — `.env.example`.
 - Подключение к БД — `DATABASE_URL` (PostgreSQL из корневого `docker-compose.yml`, сервис `db`). По умолчанию `postgresql://video_meetings:video_meetings@localhost:5432/video_meetings`. Поднять БД — `npm run db:up` из корня. Prisma CLI читает `DATABASE_URL` из `apps/api/.env` (у Prisma Client в рантайме `.env` подхватывает `@nestjs/config`).
-- JWT — `JWT_SECRET` (по умолчанию `dev-secret-change-me`) и `JWT_EXPIRES_IN` (по умолчанию `1d`).
-- CORS — `WEB_ORIGIN` (по умолчанию `http://localhost:3000`): список разрешённых origin фронтенда через запятую, включается в `main.ts` через `app.enableCors()`.
-- Файлы встреч — `FILE_STORAGE_DIR` (по умолчанию `storage/meeting-files`, путь относительно `process.cwd()` — вне `dist`, не коммитится, см. `.gitignore`) и `FILE_MAX_SIZE_BYTES` (по умолчанию `10485760`, 10 MB).
+- JWT — `JWT_SECRET` (**обязателен**, без дефолта, минимум 32 символа — иначе приложение не стартует, см. `getJwtSecretOrThrow`; сгенерировать: `openssl rand -base64 48`) и `JWT_EXPIRES_IN` (по умолчанию `1d`).
+- CORS — `WEB_ORIGIN` (по умолчанию `http://localhost:3000`): список разрешённых origin фронтенда через запятую, включается в `main.ts` через `app.enableCors()` (ограничен по `methods`/`allowedHeaders`).
+- Rate limiting — `@nestjs/throttler`, глобально 100 запросов/мин с одного IP (`ThrottlerModule` в `app.module.ts`), на `/auth/register`, `/auth/login` и `PATCH /profile/password` — 10 запросов/мин (`@Throttle`). Выключен при `NODE_ENV=test` (иначе падают e2e).
+- Файлы встреч — `FILE_STORAGE_DIR` (по умолчанию `storage/meeting-files`, путь относительно `process.cwd()` — вне `dist`, не коммитится, см. `.gitignore`) и `FILE_MAX_SIZE_BYTES` (по умолчанию `10485760`, 10 MB). Тип файла — белый список MIME (`ALLOWED_MEETING_FILE_MIME_TYPES`), квота на встречу — `MAX_FILES_PER_MEETING` / `MAX_TOTAL_SIZE_BYTES_PER_MEETING` (константы в `file-storage.config.ts`, не env).
 - Аватары пользователей — `AVATAR_STORAGE_DIR` (по умолчанию `storage/avatars`, та же логика, что и у файлов встреч) и `AVATAR_MAX_SIZE_BYTES` (по умолчанию `5242880`, 5 MB).
 
 ## Тесты
@@ -129,8 +135,8 @@ npm run prisma:migrate -w @video-meetings/api  # применить миграц
 ```
 
 Тесты создают пользователей/встречи с уникальными email на каждый прогон и за собой не убирают —
-это ожидаемо, данные живут в dev-БД. `JWT_SECRET` / `JWT_EXPIRES_IN` берутся из `apps/api/.env`
-(при отсутствии — дефолты из кода).
+это ожидаемо, данные живут в dev-БД. `JWT_SECRET` (обязателен) / `JWT_EXPIRES_IN` берутся из
+`apps/api/.env`.
 
 Один файл или один кейс: `npm test -- auth` (по подстроке пути), `npm run test:e2e -- -t "returns a JWT"` (по имени `it`/`describe`).
 

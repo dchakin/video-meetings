@@ -43,7 +43,10 @@ export function useAuth() {
   const token = useCookie<string | null>('access_token', {
     default: () => null,
     sameSite: 'lax',
-    maxAge: 60 * 60 * 24 * 7,
+    // Совпадает с дефолтным JWT_EXPIRES_IN на бэкенде (1d) — иначе cookie переживает
+    // истёкший токен, и клиент считает пользователя авторизованным дольше, чем он есть.
+    maxAge: 60 * 60 * 24,
+    secure: !import.meta.dev,
   });
 
   const isAuthenticated = computed(() => Boolean(token.value));

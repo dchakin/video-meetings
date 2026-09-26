@@ -6,7 +6,13 @@ import * as path from 'node:path';
 import { JwtPayload } from '../auth/auth.types';
 import { isMeetingMember } from '../meeting/meeting-membership';
 import { PrismaService } from '../prisma/prisma.service';
-import { getFileStorageDir } from './file-storage.config';
+import {
+  ALLOWED_MEETING_FILE_MIME_TYPES,
+  getFileStorageDir,
+  MAX_FILES_PER_MEETING,
+  MAX_TOTAL_SIZE_BYTES_PER_MEETING,
+  MEETING_FILE_MIME_TYPE_EXTENSIONS,
+} from './file-storage.config';
 import { MeetingFileResponse } from './meeting-file.types';
 
 /**
@@ -36,10 +42,16 @@ export class MeetingFileService {
 
     await this.getMeetingForOwnerOrThrow(user, meetingId);
 
+    if (!ALLOWED_MEETING_FILE_MIME_TYPES.includes(file.mimetype)) {
+      throw new BadRequestException('Неподдерживаемый тип файла');
+    }
+
+    await this.assertQuotaOrThrow(meetingId, file.size);
+
     const fileName = decodeOriginalFileName(file.originalname);
 
     await fs.mkdir(this.storageDir, { recursive: true });
-    const storedName = `${randomUUID()}${path.extname(fileName)}`;
+    const storedName = `${randomUUID()}${MEETING_FILE_MIME_TYPE_EXTENSIONS[file.mimetype]}`;
     const storagePath = path.join(this.storageDir, storedName);
     await fs.writeFile(storagePath, file.buffer);
 
@@ -89,6 +101,24 @@ export class MeetingFileService {
         throw error;
       }
     });
+  }
+
+  /** Ограничивает число и суммарный объём файлов встречи — защита от DoS диска/памяти/БД. */
+  private async assertQuotaOrThrow(meetingId: string, incomingSize: number): Promise<void> {
+    const aggregate = await this.prisma.meetingFile.aggregate({
+      where: { meetingId },
+      _count: true,
+      _sum: { size: true },
+    });
+
+    if (aggregate._count >= MAX_FILES_PER_MEETING) {
+      throw new BadRequestException(`Достигнут лимит файлов на встречу (${MAX_FILES_PER_MEETING})`);
+    }
+
+    const totalSize = (aggregate._sum.size ?? 0) + incomingSize;
+    if (totalSize > MAX_TOTAL_SIZE_BYTES_PER_MEETING) {
+      throw new BadRequestException('Превышен суммарный лимит объёма файлов встречи');
+    }
   }
 
   private async getFileOrThrow(meetingId: string, fileId: string): Promise<MeetingFile> {

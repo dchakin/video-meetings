@@ -17,7 +17,7 @@ describe('ProfileController', () => {
   let queryBus: { execute: jest.Mock };
   let controller: ProfileController;
 
-  const user: JwtPayload = { sub: 'user-1', email: 'jane.doe@example.com' };
+  const user: JwtPayload = { sub: 'user-1', email: 'jane.doe@example.com', tokenVersion: 0 };
   const file: Express.Multer.File = {
     buffer: Buffer.from('image-bytes'),
     originalname: 'avatar.png',

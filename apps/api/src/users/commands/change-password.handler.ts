@@ -1,12 +1,9 @@
-import { BadRequestException, NotFoundException, UnauthorizedException } from '@nestjs/common';
+import { NotFoundException, UnauthorizedException } from '@nestjs/common';
 import { CommandHandler, ICommandHandler } from '@nestjs/cqrs';
 import * as bcrypt from 'bcryptjs';
+import { BCRYPT_ROUNDS } from '../../common/password.util';
 import { PrismaService } from '../../prisma/prisma.service';
 import { ChangePasswordCommand } from './change-password.command';
-
-const BCRYPT_ROUNDS = 10;
-const MIN_PASSWORD_LENGTH = 8;
-const MAX_PASSWORD_LENGTH = 72;
 
 @CommandHandler(ChangePasswordCommand)
 export class ChangePasswordHandler implements ICommandHandler<ChangePasswordCommand> {
@@ -18,18 +15,17 @@ export class ChangePasswordHandler implements ICommandHandler<ChangePasswordComm
       throw new NotFoundException('Пользователь не найден');
     }
 
+    // Длина/байтовый размер newPassword уже проверены на уровне ChangePasswordDto.
     const oldPasswordMatches = await bcrypt.compare(oldPassword, user.passwordHash);
     if (!oldPasswordMatches) {
       throw new UnauthorizedException('Неверный текущий пароль');
     }
 
-    if (newPassword.length < MIN_PASSWORD_LENGTH || newPassword.length > MAX_PASSWORD_LENGTH) {
-      throw new BadRequestException(
-        `Пароль должен быть от ${MIN_PASSWORD_LENGTH} до ${MAX_PASSWORD_LENGTH} символов`,
-      );
-    }
-
     const passwordHash = await bcrypt.hash(newPassword, BCRYPT_ROUNDS);
-    await this.prisma.user.update({ where: { id: userId }, data: { passwordHash } });
+    // `tokenVersion` инкрементится, чтобы отозвать все JWT, выданные до смены пароля.
+    await this.prisma.user.update({
+      where: { id: userId },
+      data: { passwordHash, tokenVersion: { increment: 1 } },
+    });
   }
 }

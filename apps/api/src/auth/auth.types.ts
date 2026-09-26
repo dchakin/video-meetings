@@ -7,4 +7,6 @@ export interface AuthResult {
 export interface JwtPayload {
   sub: string;
   email: string;
+  /** Сверяется с `User.tokenVersion` в `JwtAuthGuard` — смена пароля отзывает старые токены. */
+  tokenVersion: number;
 }

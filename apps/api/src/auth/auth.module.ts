@@ -6,6 +6,7 @@ import { UsersModule } from '../users/users.module';
 import { AuthController } from './auth.controller';
 import { AUTH_COMMAND_HANDLERS } from './commands';
 import { JwtAuthGuard } from './guards/jwt-auth.guard';
+import { getJwtSecretOrThrow } from './jwt-secret.util';
 import { TokenService } from './tokens/token.service';
 
 @Module({
@@ -16,7 +17,7 @@ import { TokenService } from './tokens/token.service';
       imports: [ConfigModule],
       inject: [ConfigService],
       useFactory: (config: ConfigService) => ({
-        secret: config.get<string>('JWT_SECRET', 'dev-secret-change-me'),
+        secret: getJwtSecretOrThrow(config),
         signOptions: {
           expiresIn: config.get<string>('JWT_EXPIRES_IN', '1d') as JwtSignOptions['expiresIn'],
         },

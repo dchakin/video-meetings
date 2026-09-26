@@ -1,6 +1,7 @@
 import { CanActivate, ExecutionContext, Injectable, UnauthorizedException } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { Request } from 'express';
+import { PrismaService } from '../../prisma/prisma.service';
 import { JwtPayload } from '../auth.types';
 
 /** Запрос, к которому guard прикрепил данные аутентифицированного пользователя. */
@@ -8,10 +9,17 @@ export interface AuthenticatedRequest extends Request {
   user: JwtPayload;
 }
 
-/** Пропускает запрос только с валидным `Authorization: Bearer <JWT>`. */
+/**
+ * Пропускает запрос только с валидным `Authorization: Bearer <JWT>`, чей `tokenVersion`
+ * совпадает с текущим значением у пользователя в БД — иначе токены, выданные до смены
+ * пароля, оставались бы действительными до истечения TTL.
+ */
 @Injectable()
 export class JwtAuthGuard implements CanActivate {
-  constructor(private readonly jwt: JwtService) {}
+  constructor(
+    private readonly jwt: JwtService,
+    private readonly prisma: PrismaService,
+  ) {}
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
     const request = context.switchToHttp().getRequest<AuthenticatedRequest>();
@@ -20,12 +28,19 @@ export class JwtAuthGuard implements CanActivate {
       throw new UnauthorizedException('Отсутствует токен доступа');
     }
 
+    let payload: JwtPayload;
     try {
-      request.user = await this.jwt.verifyAsync<JwtPayload>(token);
+      payload = await this.jwt.verifyAsync<JwtPayload>(token);
     } catch {
       throw new UnauthorizedException('Недействительный токен доступа');
     }
 
+    const user = await this.prisma.user.findUnique({ where: { id: payload.sub } });
+    if (!user || user.tokenVersion !== payload.tokenVersion) {
+      throw new UnauthorizedException('Недействительный токен доступа');
+    }
+
+    request.user = payload;
     return true;
   }
 

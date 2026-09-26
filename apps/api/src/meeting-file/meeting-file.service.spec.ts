@@ -15,9 +15,17 @@ jest.mock('node:fs', () => ({
 }));
 
 describe('MeetingFileService', () => {
-  const owner: JwtPayload = { sub: 'owner-id', email: 'owner@example.com' };
-  const participant: JwtPayload = { sub: 'participant-id', email: 'participant@example.com' };
-  const stranger: JwtPayload = { sub: 'stranger-id', email: 'stranger@example.com' };
+  const owner: JwtPayload = { sub: 'owner-id', email: 'owner@example.com', tokenVersion: 0 };
+  const participant: JwtPayload = {
+    sub: 'participant-id',
+    email: 'participant@example.com',
+    tokenVersion: 0,
+  };
+  const stranger: JwtPayload = {
+    sub: 'stranger-id',
+    email: 'stranger@example.com',
+    tokenVersion: 0,
+  };
 
   const meeting = {
     id: 'meeting-1',
@@ -38,7 +46,12 @@ describe('MeetingFileService', () => {
 
   let prisma: {
     meeting: { findUnique: jest.Mock };
-    meetingFile: { findFirst: jest.Mock; delete: jest.Mock; create: jest.Mock };
+    meetingFile: {
+      findFirst: jest.Mock;
+      delete: jest.Mock;
+      create: jest.Mock;
+      aggregate: jest.Mock;
+    };
   };
   let service: MeetingFileService;
 
@@ -46,7 +59,12 @@ describe('MeetingFileService', () => {
     jest.clearAllMocks();
     prisma = {
       meeting: { findUnique: jest.fn() },
-      meetingFile: { findFirst: jest.fn(), delete: jest.fn(), create: jest.fn() },
+      meetingFile: {
+        findFirst: jest.fn(),
+        delete: jest.fn(),
+        create: jest.fn(),
+        aggregate: jest.fn().mockResolvedValue({ _count: 0, _sum: { size: 0 } }),
+      },
     };
     service = new MeetingFileService(prisma as unknown as PrismaService);
   });

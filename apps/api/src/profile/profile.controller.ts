@@ -11,6 +11,7 @@ import {
 } from '@nestjs/common';
 import { CommandBus, QueryBus } from '@nestjs/cqrs';
 import { FileInterceptor } from '@nestjs/platform-express';
+import { Throttle } from '@nestjs/throttler';
 import { CurrentUser } from '../auth/current-user.decorator';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { JwtPayload } from '../auth/auth.types';
@@ -47,6 +48,7 @@ export class ProfileController {
   }
 
   @Patch('password')
+  @Throttle({ default: { limit: 10, ttl: 60_000 } })
   changePassword(@CurrentUser() user: JwtPayload, @Body() dto: ChangePasswordDto): Promise<void> {
     return this.commandBus.execute(
       new ChangePasswordCommand(user.sub, dto.oldPassword, dto.newPassword),

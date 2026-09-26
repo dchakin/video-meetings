@@ -6,6 +6,13 @@ import { AuthResult } from '../auth.types';
 import { TokenService } from '../tokens/token.service';
 import { LoginCommand } from './login.command';
 
+/**
+ * Хеш-заглушка для сравнения, когда пользователь не найден — иначе ответ на
+ * несуществующий email приходит заметно быстрее (нет вызова bcrypt.compare),
+ * что позволяет перебором отличать существующие email от несуществующих.
+ */
+const DUMMY_PASSWORD_HASH = bcrypt.hashSync('not-a-real-password', 10);
+
 @CommandHandler(LoginCommand)
 export class LoginHandler implements ICommandHandler<LoginCommand, AuthResult> {
   constructor(
@@ -15,15 +22,15 @@ export class LoginHandler implements ICommandHandler<LoginCommand, AuthResult> {
 
   async execute({ email, password }: LoginCommand): Promise<AuthResult> {
     const user = await this.queryBus.execute(new FindUserByEmailQuery(email));
-    if (!user) {
+
+    const passwordMatches = await bcrypt.compare(
+      password,
+      user?.passwordHash ?? DUMMY_PASSWORD_HASH,
+    );
+    if (!user || !passwordMatches) {
       throw new UnauthorizedException('Неверный email или пароль');
     }
 
-    const passwordMatches = await bcrypt.compare(password, user.passwordHash);
-    if (!passwordMatches) {
-      throw new UnauthorizedException('Неверный email или пароль');
-    }
-
-    return this.tokens.issue({ sub: user.id, email: user.email });
+    return this.tokens.issue({ sub: user.id, email: user.email, tokenVersion: user.tokenVersion });
   }
 }

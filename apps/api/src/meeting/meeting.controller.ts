@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, Post, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, Param, ParseUUIDPipe, Post, UseGuards } from '@nestjs/common';
 import { Meeting } from '@prisma/client';
 import { CurrentUser } from '../auth/current-user.decorator';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
@@ -22,7 +22,10 @@ export class MeetingController {
   }
 
   @Get(':id')
-  findOne(@CurrentUser() user: JwtPayload, @Param('id') id: string): Promise<Meeting> {
+  findOne(
+    @CurrentUser() user: JwtPayload,
+    @Param('id', ParseUUIDPipe) id: string,
+  ): Promise<Meeting> {
     return this.meetings.findOneForMember(user, id);
   }
 }
