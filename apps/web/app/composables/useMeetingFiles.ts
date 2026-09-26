@@ -1,3 +1,14 @@
+/** Статус транскрибации файла встречи — зеркало enum `TranscriptionStatus` из API. */
+export enum TranscriptionStatus {
+  QUEUED = 'QUEUED',
+  IN_PROGRESS = 'IN_PROGRESS',
+  DONE = 'DONE',
+  ERROR = 'ERROR',
+}
+
+/** Интервал опроса списка файлов встречи, пока есть незавершённая транскрибация. */
+const TRANSCRIPTION_POLL_INTERVAL_MS = 5000;
+
 /** Файл встречи — форма ответа API `GET /meetings/:id/files`. */
 export interface MeetingFile {
   id: string;
@@ -6,6 +17,53 @@ export interface MeetingFile {
   size: number;
   createdAt: string;
   uploadedById: string;
+  /** `null` — файл не подлежит транскрибации (формат отличен от mp4/mp3). */
+  transcriptionStatus: TranscriptionStatus | null;
+  /** Текст транскрипции; заполнен только при `transcriptionStatus === DONE`. */
+  transcriptionText: string | null;
+}
+
+/** Есть ли среди файлов хотя бы один с незавершённой транскрибацией. */
+function hasPendingTranscription(files: MeetingFile[]): boolean {
+  return files.some(
+    (file) =>
+      file.transcriptionStatus === TranscriptionStatus.QUEUED ||
+      file.transcriptionStatus === TranscriptionStatus.IN_PROGRESS,
+  );
+}
+
+/**
+ * Периодически перезапрашивает список файлов встречи, пока хотя бы у одного из них
+ * транскрибация не завершена (статус `QUEUED` или `IN_PROGRESS`). Опрос останавливается
+ * автоматически, когда незавершённых файлов не остаётся, а также при размонтировании
+ * компонента.
+ */
+export function useTranscriptionPolling(
+  files: Ref<MeetingFile[] | null | undefined>,
+  refresh: () => Promise<unknown>,
+) {
+  let intervalId: ReturnType<typeof setInterval> | null = null;
+
+  function stopPolling() {
+    if (intervalId !== null) {
+      clearInterval(intervalId);
+      intervalId = null;
+    }
+  }
+
+  function syncPolling() {
+    const isPending = hasPendingTranscription(files.value ?? []);
+    if (isPending && intervalId === null) {
+      intervalId = setInterval(() => void refresh(), TRANSCRIPTION_POLL_INTERVAL_MS);
+    } else if (!isPending) {
+      stopPolling();
+    }
+  }
+
+  watch(files, syncPolling, { immediate: true, deep: true });
+  onUnmounted(stopPolling);
+
+  return { stopPolling };
 }
 
 /** Ошибка загрузки файла со статусом HTTP-ответа (когда он известен). */

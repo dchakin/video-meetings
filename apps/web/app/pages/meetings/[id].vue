@@ -26,6 +26,8 @@ const {
 } = meetingAsync;
 const { data: files, pending: filesPending, error: filesError, refresh: refreshFiles } = filesAsync;
 
+useTranscriptionPolling(files, refreshFiles);
+
 /** 404 — встречи нет или нет доступа; любой другой сбой — сетевая/серверная ошибка. */
 const meetingNotFound = computed(
   () => (meetingError.value as FetchError | null)?.statusCode === 404,
