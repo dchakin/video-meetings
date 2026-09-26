@@ -52,3 +52,22 @@ When you change the project's architecture, update the documentation in the same
 - changes to conventions (module structure, test locations, lint/tsconfig rules) — record them in the "Conventions" section of the corresponding `CLAUDE.md`.
 
 Documentation must not fall behind the code: a discrepancy is a bug.
+
+## Именование
+
+- Файлы: feature.type.ts (meetings.service.ts)
+- Методы описывают действие: createMeetingWithFiles
+- Переменные по смыслу: meetingId не id, x, data
+- Enum вместо строк: MeetingStatus.PENDING не 'pnd'
+- Константы вместо magic numbers: MAX_FILE_SIZE_MB
+
+## Размер
+
+- Файл > 250 строк → декомпозируй перед добавлением кода
+- Метод > 40 строк → выдели в приватный метод
+- Вложенность > 3 уровней → рефакторить
+
+## Рефакторинг
+
+- Перед добавлением кода в большой файл — декомпозируй
+- Тесты зелёные на каждом шаге рефакторинга
