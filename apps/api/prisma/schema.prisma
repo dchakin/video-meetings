@@ -47,5 +47,17 @@ model MeetingFile {
   uploadedBy   User     @relation(fields: [uploadedById], references: [id], onDelete: Cascade)
   createdAt    DateTime @default(now())
 
+  // `null` — транскрибация неприменима (файл не video/mp4 или audio/mpeg); заполняется
+  // сразу при создании записи для mp4/mp3, дальше проходит QUEUED → IN_PROGRESS → DONE|ERROR.
+  transcriptionStatus TranscriptionStatus?
+  transcriptionText   String?
+
   @@index([meetingId])
+}
+
+enum TranscriptionStatus {
+  QUEUED
+  IN_PROGRESS
+  DONE
+  ERROR
 }

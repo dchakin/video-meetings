@@ -34,6 +34,10 @@ export const MEETING_FILE_MIME_TYPE_EXTENSIONS: Record<string, string> = {
   'image/png': '.png',
   'image/webp': '.webp',
   'image/gif': '.gif',
+  // Форматы записи встреч — для них после загрузки автоматически запускается локальная
+  // транскрибация через Whisper (см. `transcription/whisper-transcription.service.ts`).
+  'video/mp4': '.mp4',
+  'audio/mpeg': '.mp3',
 };
 export const ALLOWED_MEETING_FILE_MIME_TYPES = Object.keys(MEETING_FILE_MIME_TYPE_EXTENSIONS);
 

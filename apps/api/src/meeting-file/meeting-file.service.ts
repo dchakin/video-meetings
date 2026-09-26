@@ -1,11 +1,13 @@
-import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
-import { Meeting, MeetingFile } from '@prisma/client';
+import { BadRequestException, Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { Meeting, MeetingFile, TranscriptionStatus } from '@prisma/client';
 import { randomUUID } from 'node:crypto';
 import { promises as fs } from 'node:fs';
 import * as path from 'node:path';
 import { JwtPayload } from '../auth/auth.types';
 import { isMeetingMember, isMeetingOwner } from '../meeting/meeting-membership';
 import { PrismaService } from '../prisma/prisma.service';
+import { TRANSCRIBABLE_MEETING_FILE_MIME_TYPES } from '../transcription/transcription.constants';
+import { WhisperTranscriptionService } from '../transcription/whisper-transcription.service';
 import {
   ALLOWED_MEETING_FILE_MIME_TYPES,
   getFileStorageDir,
@@ -28,8 +30,12 @@ function decodeOriginalFileName(originalName: string): string {
 @Injectable()
 export class MeetingFileService {
   private readonly storageDir = path.resolve(process.cwd(), getFileStorageDir());
+  private readonly logger = new Logger(MeetingFileService.name);
 
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly whisperTranscriptionService: WhisperTranscriptionService,
+  ) {}
 
   async upload(
     user: JwtPayload,
@@ -64,8 +70,13 @@ export class MeetingFileService {
           size: file.size,
           storagePath,
           uploadedById: user.sub,
+          transcriptionStatus: this.isTranscribableMimeType(file.mimetype)
+            ? TranscriptionStatus.QUEUED
+            : null,
         },
       });
+
+      this.triggerTranscriptionInBackground(created);
 
       return this.toResponse(created);
     } catch (error) {
@@ -101,6 +112,52 @@ export class MeetingFileService {
         throw error;
       }
     });
+  }
+
+  private isTranscribableMimeType(mimeType: string): boolean {
+    return TRANSCRIBABLE_MEETING_FILE_MIME_TYPES.includes(mimeType);
+  }
+
+  /**
+   * Запускает транскрибацию файла в фоне, не блокируя ответ на запрос загрузки. Промис
+   * намеренно не возвращается вызывающему коду (`upload`) — сбой обрабатывается внутри
+   * `runTranscription` и отражается статусом файла в БД, а не отклонением ответа на upload.
+   */
+  private triggerTranscriptionInBackground(file: MeetingFile): void {
+    if (!this.isTranscribableMimeType(file.mimeType)) {
+      return;
+    }
+
+    this.runTranscription(file).catch((error) => {
+      // `runTranscription` уже перевела статус файла в ERROR — здесь только логируем,
+      // чтобы необработанный отказ промиса не завершил процесс.
+      this.logger.error(`Транскрибация файла ${file.id} не удалась: ${(error as Error).message}`);
+    });
+  }
+
+  private async runTranscription(file: MeetingFile): Promise<void> {
+    await this.updateTranscriptionStatus(file.id, TranscriptionStatus.IN_PROGRESS);
+
+    try {
+      const transcriptionText = await this.whisperTranscriptionService.transcribeFile(
+        file.storagePath,
+        file.mimeType,
+      );
+      await this.prisma.meetingFile.update({
+        where: { id: file.id },
+        data: { transcriptionStatus: TranscriptionStatus.DONE, transcriptionText },
+      });
+    } catch (error) {
+      await this.updateTranscriptionStatus(file.id, TranscriptionStatus.ERROR);
+      throw error;
+    }
+  }
+
+  private async updateTranscriptionStatus(
+    fileId: string,
+    transcriptionStatus: TranscriptionStatus,
+  ): Promise<void> {
+    await this.prisma.meetingFile.update({ where: { id: fileId }, data: { transcriptionStatus } });
   }
 
   /** Ограничивает число и суммарный объём файлов встречи — защита от DoS диска/памяти/БД. */
@@ -163,6 +220,8 @@ export class MeetingFileService {
       size: file.size,
       createdAt: file.createdAt,
       uploadedById: file.uploadedById,
+      transcriptionStatus: file.transcriptionStatus,
+      transcriptionText: file.transcriptionText,
     };
   }
 }
