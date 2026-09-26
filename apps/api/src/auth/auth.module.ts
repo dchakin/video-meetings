@@ -26,6 +26,8 @@ import { TokenService } from './tokens/token.service';
   ],
   controllers: [AuthController],
   providers: [TokenService, JwtAuthGuard, ...AUTH_COMMAND_HANDLERS],
-  exports: [JwtModule, JwtAuthGuard],
+  // CqrsModule экспортируется, чтобы модули, использующие JwtAuthGuard (например meeting),
+  // могли резолвить QueryBus, от которого зависит guard.
+  exports: [CqrsModule, JwtModule, JwtAuthGuard],
 })
 export class AuthModule {}

@@ -4,7 +4,7 @@ import { randomUUID } from 'node:crypto';
 import { promises as fs } from 'node:fs';
 import * as path from 'node:path';
 import { JwtPayload } from '../auth/auth.types';
-import { isMeetingMember } from '../meeting/meeting-membership';
+import { isMeetingMember, isMeetingOwner } from '../meeting/meeting-membership';
 import { PrismaService } from '../prisma/prisma.service';
 import {
   ALLOWED_MEETING_FILE_MIME_TYPES,
@@ -131,7 +131,7 @@ export class MeetingFileService {
 
   private async getMeetingForOwnerOrThrow(user: JwtPayload, meetingId: string): Promise<Meeting> {
     const meeting = await this.getMeetingOrThrow(meetingId);
-    if (meeting.ownerId !== user.sub) {
+    if (!isMeetingOwner(meeting, user)) {
       // Скрываем существование встречи от тех, кто не вправе ей управлять — как и upload/delete.
       throw new NotFoundException('Встреча не найдена');
     }

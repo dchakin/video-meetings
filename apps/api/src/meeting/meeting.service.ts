@@ -3,6 +3,7 @@ import { Meeting } from '@prisma/client';
 import { JwtPayload } from '../auth/auth.types';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateMeetingDto } from './dto/create-meeting.dto';
+import { ListMeetingsDto } from './dto/list-meetings.dto';
 import { isMeetingMember } from './meeting-membership';
 
 @Injectable()
@@ -20,10 +21,12 @@ export class MeetingService {
     });
   }
 
-  findAllByOwner(ownerId: string): Promise<Meeting[]> {
+  findAllByOwner(ownerId: string, { offset, limit }: ListMeetingsDto): Promise<Meeting[]> {
     return this.prisma.meeting.findMany({
       where: { ownerId },
       orderBy: { createdAt: 'desc' },
+      skip: offset,
+      take: limit,
     });
   }
 

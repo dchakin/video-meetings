@@ -1,7 +1,8 @@
 import { CanActivate, ExecutionContext, Injectable, UnauthorizedException } from '@nestjs/common';
+import { QueryBus } from '@nestjs/cqrs';
 import { JwtService } from '@nestjs/jwt';
 import { Request } from 'express';
-import { PrismaService } from '../../prisma/prisma.service';
+import { GetUserTokenVersionQuery } from '../../users/queries';
 import { JwtPayload } from '../auth.types';
 
 /** Запрос, к которому guard прикрепил данные аутентифицированного пользователя. */
@@ -18,7 +19,7 @@ export interface AuthenticatedRequest extends Request {
 export class JwtAuthGuard implements CanActivate {
   constructor(
     private readonly jwt: JwtService,
-    private readonly prisma: PrismaService,
+    private readonly queryBus: QueryBus,
   ) {}
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
@@ -35,11 +36,8 @@ export class JwtAuthGuard implements CanActivate {
       throw new UnauthorizedException('Недействительный токен доступа');
     }
 
-    const user = await this.prisma.user.findUnique({
-      where: { id: payload.sub },
-      select: { tokenVersion: true },
-    });
-    if (!user || user.tokenVersion !== payload.tokenVersion) {
+    const tokenVersion = await this.queryBus.execute(new GetUserTokenVersionQuery(payload.sub));
+    if (tokenVersion === null || tokenVersion !== payload.tokenVersion) {
       throw new UnauthorizedException('Недействительный токен доступа');
     }
 

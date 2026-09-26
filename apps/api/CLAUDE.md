@@ -28,7 +28,7 @@ src/
     prisma.module.ts   — @Global-модуль, экспортирует PrismaService
     prisma.service.ts  — PrismaClient + connect/disconnect по хукам жизненного цикла
   auth/                — CQRS: авторизация (хеш/сверка пароля, выпуск и проверка JWT). Пользователей не трогает — делегирует модулю `users` через CQRS
-    auth.module.ts     — CqrsModule + UsersModule + JwtModule (secret через `getJwtSecretOrThrow`, expiresIn из env), регистрирует command-обработчики и TokenService
+    auth.module.ts     — CqrsModule + UsersModule + JwtModule (secret через `getJwtSecretOrThrow`, expiresIn из env), регистрирует command-обработчики и TokenService; экспортирует CqrsModule вместе с JwtModule/JwtAuthGuard — модулям с `@UseGuards(JwtAuthGuard)` (`meeting`, `meeting-file`) нужен доступ к `QueryBus`, от которого зависит guard
     auth.controller.ts — POST /auth/register → RegisterCommand, POST /auth/login → LoginCommand; оба под `@Throttle` (10 запросов/мин с одного IP)
     auth.types.ts      — AuthResult, JwtPayload (включает `tokenVersion` — сверяется в JwtAuthGuard с БД, отзывает токены при смене пароля)
     jwt-secret.util.ts — getJwtSecretOrThrow(config): требует явный `JWT_SECRET` ≥ 32 символов, без дефолта — иначе приложение не стартует
@@ -38,7 +38,7 @@ src/
       index.ts         — AUTH_COMMAND_HANDLERS + реэкспорт команд
     tokens/token.service.ts — общий выпуск JWT (jwt.signAsync)
     dto/auth-credentials.dto.ts — { email, password }, правила class-validator; email нормализуется через `normalizeEmail`, пароль — 8–72 БАЙТ (`@IsByteLength`, не символов — bcrypt учитывает только первые 72 байта)
-    guards/jwt-auth.guard.ts — проверяет `Authorization: Bearer <JWT>` и что `tokenVersion` из токена совпадает с текущим у пользователя в БД (иначе 401 — отзыв токенов при смене пароля), кладёт payload в `request.user`; экспортируется вместе с JwtModule
+    guards/jwt-auth.guard.ts — проверяет `Authorization: Bearer <JWT>` и что `tokenVersion` из токена совпадает с текущим у пользователя (запрашивается у `users` через `GetUserTokenVersionQuery`/`QueryBus`, без прямого чтения таблицы `User`; иначе 401 — отзыв токенов при смене пароля), кладёт payload в `request.user`; экспортируется вместе с JwtModule
     current-user.decorator.ts — `@CurrentUser()`: достаёт JwtPayload из запроса
   users/               — CQRS: единственный владелец таблицы User (создание, поиск, профиль, смена имени и пароля). Провайдеров наружу не экспортирует — только команды/запросы
     users.module.ts    — CqrsModule, регистрирует command- и query-обработчики
@@ -54,6 +54,7 @@ src/
       find-user-by-email.query.ts / find-user-by-email.handler.ts — ищет User по email, возвращает User | null
       get-user-profile.query.ts / get-user-profile.handler.ts — возвращает UserProfile по userId (404, если пользователя нет)
       get-avatar-file.query.ts / get-avatar-file.handler.ts — по имени файла из `avatarUrl` возвращает { storagePath, mimeType }; имя строго `<uuid>.<jpg|png|webp>` (защита от `../`), иначе или при отсутствии файла — 404
+      get-user-token-version.query.ts / get-user-token-version.handler.ts — возвращает текущий `tokenVersion` пользователя (`null`, если пользователя нет); используется `JwtAuthGuard` из `auth` через `QueryBus`, чтобы `auth` не читал таблицу `User` напрямую
       index.ts         — USERS_QUERY_HANDLERS + реэкспорт запросов
   profile/             — HTTP-слой профиля пользователя (CQRS-диспатч в `users`), защищён `JwtAuthGuard`
     profile.module.ts     — контроллеры ProfileController и AvatarsController; импортирует CqrsModule, AuthModule (ради JwtAuthGuard) и UsersModule (ради обработчиков команд/запросов `users`)
