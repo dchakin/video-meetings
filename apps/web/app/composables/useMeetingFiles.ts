@@ -52,6 +52,8 @@ export function useTranscriptionPolling(
   }
 
   function syncPolling() {
+    // Опрос нужен только в браузере: на сервере `setInterval` в Nuxt 4.5+ выбрасывает ошибку.
+    if (!import.meta.client) return;
     const isPending = hasPendingTranscription(files.value ?? []);
     if (isPending && intervalId === null) {
       intervalId = setInterval(() => void refresh(), TRANSCRIPTION_POLL_INTERVAL_MS);

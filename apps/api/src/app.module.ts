@@ -7,6 +7,7 @@ import { AppService } from './app.service';
 import { AuthModule } from './auth/auth.module';
 import { MeetingModule } from './meeting/meeting.module';
 import { MeetingFileModule } from './meeting-file/meeting-file.module';
+import { MeetingSummaryModule } from './meeting-summary/meeting-summary.module';
 import { PrismaModule } from './prisma/prisma.module';
 import { ProfileModule } from './profile/profile.module';
 import { UsersModule } from './users/users.module';
@@ -26,6 +27,7 @@ import { UsersModule } from './users/users.module';
     AuthModule,
     MeetingModule,
     MeetingFileModule,
+    MeetingSummaryModule,
     ProfileModule,
   ],
   controllers: [AppController],

@@ -19,7 +19,7 @@
 ```
 src/
   main.ts            — bootstrap: отключает встроенный body-parser Nest и сам ограничивает JSON-тело (1mb), `helmet()` (CSP выключен — чистый API; CORP: cross-origin — фронтенд на другом origin грузит аватары/файлы), CORS (env WEB_ORIGIN, ограничен по methods/headers), слушает PORT (по умолчанию 4000)
-  app.module.ts      — корневой модуль: ConfigModule (global), ThrottlerModule (глобальный rate limit, выключен при NODE_ENV=test), PrismaModule, AuthModule, MeetingModule, глобальный ValidationPipe через APP_PIPE, глобальный ThrottlerGuard через APP_GUARD
+  app.module.ts      — корневой модуль: ConfigModule (global), ThrottlerModule (глобальный rate limit, выключен при NODE_ENV=test), PrismaModule, AuthModule, MeetingModule, MeetingFileModule, MeetingSummaryModule, глобальный ValidationPipe через APP_PIPE, глобальный ThrottlerGuard через APP_GUARD
   app.controller.ts  — GET / → AppService.getHello()
   app.service.ts
   common/
@@ -78,15 +78,20 @@ src/
     transcription.module.ts        — экспортирует `WhisperTranscriptionService`
     whisper-transcription.service.ts — `transcribeFile(filePath, mimeType)`: распознаёт речь локальной моделью Whisper (whisper.cpp через npm-пакет `nodejs-whisper`, без внешних API); извлечение аудиодорожки из `video/mp4` отдельным шагом не делается — `nodejs-whisper` сам прогоняет файл через системный `ffmpeg` перед распознаванием (нужен установленный `ffmpeg` в окружении). Бросает ошибку при сбое без внутреннего подавления — статус файла в ERROR переводит вызывающий код (`meeting-file.service.ts`)
     transcription.constants.ts     — `WHISPER_MODEL_NAME` (`'base'` — в PRD модель названа "low", такого размера у Whisper нет; `base` выбрана как ближайшая маленькая модель, обоснование в комментарии у константы), `TRANSCRIBABLE_MEETING_FILE_MIME_TYPES` (`video/mp4`, `audio/mpeg`)
-  open-router/         — обычный модуль Nest (без контроллера), HTTP-клиент к OpenRouter — пока без потребителей, готов к подключению будущими фичами
+  open-router/         — обычный модуль Nest (без контроллера), HTTP-клиент к OpenRouter — потребитель — `meeting-summary`
     open-router.module.ts      — экспортирует `OpenRouterService`
     open-router.service.ts     — `ask(prompt, model)`: `fetch` на `https://openrouter.ai/api/v1/chat/completions` (OpenAI-совместимый формат), возвращает `choices[0].message.content`; не-2xx или пустой content — ошибка
     open-router.config.ts      — `getOpenRouterApiKeyOrThrow()`: валидирует наличие `OPENROUTER_API_KEY` в `process.env`
     open-router.constants.ts   — `OPEN_ROUTER_FREE_MODEL` (`'liquid/lfm-2.5-2.6b:free'`) — бесплатная модель (суффикс `:free`, не списывает с баланса) для тестовых/быстрых запросов; лимит — 20 запросов/мин и 50/день, пока на аккаунт не куплено 10+ кредитов. Некоторые `:free` модели временами получают 429/502 от апстрим-провайдера (общий бесплатный пул на всех пользователей OpenRouter) — если тест начнёт падать с такой ошибкой, это не баг кода, стоит проверить `GET https://openrouter.ai/api/v1/models` и сменить модель на другую `:free`
     open-router.service.spec.ts — реальный вызов OpenRouter API (тратит токены), пропускается через `describe.skip`, если `OPENROUTER_API_KEY` не задан в окружении
+  meeting-summary/     — обычный модуль Nest (controller + service), защищён `JwtAuthGuard`; выжимка встречи (summary, action items, решения) через `OpenRouterService`
+    meeting-summary.controller.ts — GET /meetings/:meetingId/summary (сохранённая выжимка и статус, 404 если её ещё нет) и POST (202 Accepted): переводит выжимку в `IN_PROGRESS` и запускает генерацию без ожидания; 400 — нет `DONE`-транскрипций, 409 — генерация уже идёт; автозапуска после транскрибации нет
+    meeting-summary.service.ts    — `getSummary` и `startGeneration` (доступ владельцу/участнику, иначе 404; атомарный захват статуса через `updateMany`/`create` — параллельный запуск даёт 409; после `ERROR` запуск разрешён) и `generate`: берёт тексты транскрипций файлов со статусом `DONE`, строит промпт, вызывает `OpenRouterService.ask`, валидирует ответ и полностью перезаписывает выжимку (статус `DONE`); при любом сбое — статус `ERROR` без записи данных
+    meeting-summary.prompt.ts / meeting-summary.parser.ts — промпт (строго JSON, язык ответа = язык транскрипции) и разбор/валидация ответа модели (допускает обёртку в markdown-fence)
+    meeting-summary.constants.ts  — `MEETING_SUMMARY_MODEL` (пока `OPEN_ROUTER_FREE_MODEL`), `MEETING_SUMMARY_MAX_TOKENS`
   *.spec.ts          — unit-тесты рядом с кодом
 prisma/
-  schema.prisma      — datasource (env DATABASE_URL) + модели User (включая `tokenVersion` — отзыв JWT при смене пароля), Meeting (owner → User), MeetingFile (meeting → Meeting, uploadedBy → User; `transcriptionStatus` — enum `TranscriptionStatus` (QUEUED/IN_PROGRESS/DONE/ERROR), `null` = транскрибация неприменима (не video/mp4 или audio/mpeg); `transcriptionText` — текст готовой транскрипции)
+  schema.prisma      — datasource (env DATABASE_URL) + модели User (включая `tokenVersion` — отзыв JWT при смене пароля), Meeting (owner → User), MeetingFile (meeting → Meeting, uploadedBy → User; `transcriptionStatus` — enum `TranscriptionStatus` (QUEUED/IN_PROGRESS/DONE/ERROR), `null` = транскрибация неприменима (не video/mp4 или audio/mpeg); `transcriptionText` — текст готовой транскрипции), MeetingSummary (одна на Meeting: `status` — enum `MeetingSummaryStatus` IN_PROGRESS/DONE/ERROR, `summary`, `actionItems` Json `[{description, assignee|null}]`, `decisions` String[])
   migrations/        — SQL-миграции Prisma
 test/
   app.e2e-spec.ts, auth.e2e-spec.ts, avatars.e2e-spec.ts, meeting.e2e-spec.ts, meeting-file.e2e-spec.ts, jest-e2e.json

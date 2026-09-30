@@ -223,6 +223,8 @@ async function onRemove(file: MeetingFile) {
           @remove="onRemove"
         />
       </section>
+
+      <MeetingSummary :meeting-id="meetingId" :files="files" />
     </template>
   </UContainer>
 </template>
