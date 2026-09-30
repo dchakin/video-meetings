@@ -10,6 +10,7 @@
 - **Prisma 6** (`@prisma/client`, dev-зависимость `prisma`) — ORM поверх PostgreSQL. Схема — `prisma/schema.prisma`, миграции — `prisma/migrations/`.
 - **Auth**: `@nestjs/cqrs` (CQRS — команды/обработчики), `@nestjs/jwt` (JWT), `@nestjs/config` (env), `bcryptjs` (хеш паролей), `class-validator` / `class-transformer` (валидация DTO).
 - **Безопасность**: `helmet` (security-заголовки, см. `main.ts`), `@nestjs/throttler` (rate limiting, глобальный `APP_GUARD` + `@Throttle` на auth/смене пароля).
+- **OpenRouter**: модуль `open-router` — обычный HTTP-клиент (`fetch`) к OpenAI-совместимому `POST /api/v1/chat/completions` OpenRouter, без SDK. Нужен `OPENROUTER_API_KEY` в окружении.
 - Держать мажоры на CJS-совместимых версиях: `@nestjs/config@4`, `@nestjs/jwt@11`, `@nestjs/cqrs@11`, `@prisma/client@6` (более новые ломают ts-jest CJS / требуют `prisma.config.ts`).
 - Тесты — Jest + ts-jest (конфиг в `package.json`, `rootDir: src`, `*.spec.ts`); e2e — `test/jest-e2e.json`. E2e поднимают реальное приложение и ходят в БД из `docker-compose.yml` — перед прогоном нужен `npm run db:up` и применённые миграции.
 
@@ -77,6 +78,12 @@ src/
     transcription.module.ts        — экспортирует `WhisperTranscriptionService`
     whisper-transcription.service.ts — `transcribeFile(filePath, mimeType)`: распознаёт речь локальной моделью Whisper (whisper.cpp через npm-пакет `nodejs-whisper`, без внешних API); извлечение аудиодорожки из `video/mp4` отдельным шагом не делается — `nodejs-whisper` сам прогоняет файл через системный `ffmpeg` перед распознаванием (нужен установленный `ffmpeg` в окружении). Бросает ошибку при сбое без внутреннего подавления — статус файла в ERROR переводит вызывающий код (`meeting-file.service.ts`)
     transcription.constants.ts     — `WHISPER_MODEL_NAME` (`'base'` — в PRD модель названа "low", такого размера у Whisper нет; `base` выбрана как ближайшая маленькая модель, обоснование в комментарии у константы), `TRANSCRIBABLE_MEETING_FILE_MIME_TYPES` (`video/mp4`, `audio/mpeg`)
+  open-router/         — обычный модуль Nest (без контроллера), HTTP-клиент к OpenRouter — пока без потребителей, готов к подключению будущими фичами
+    open-router.module.ts      — экспортирует `OpenRouterService`
+    open-router.service.ts     — `ask(prompt, model)`: `fetch` на `https://openrouter.ai/api/v1/chat/completions` (OpenAI-совместимый формат), возвращает `choices[0].message.content`; не-2xx или пустой content — ошибка
+    open-router.config.ts      — `getOpenRouterApiKeyOrThrow()`: валидирует наличие `OPENROUTER_API_KEY` в `process.env`
+    open-router.constants.ts   — `OPEN_ROUTER_FREE_MODEL` (`'liquid/lfm-2.5-2.6b:free'`) — бесплатная модель (суффикс `:free`, не списывает с баланса) для тестовых/быстрых запросов; лимит — 20 запросов/мин и 50/день, пока на аккаунт не куплено 10+ кредитов. Некоторые `:free` модели временами получают 429/502 от апстрим-провайдера (общий бесплатный пул на всех пользователей OpenRouter) — если тест начнёт падать с такой ошибкой, это не баг кода, стоит проверить `GET https://openrouter.ai/api/v1/models` и сменить модель на другую `:free`
+    open-router.service.spec.ts — реальный вызов OpenRouter API (тратит токены), пропускается через `describe.skip`, если `OPENROUTER_API_KEY` не задан в окружении
   *.spec.ts          — unit-тесты рядом с кодом
 prisma/
   schema.prisma      — datasource (env DATABASE_URL) + модели User (включая `tokenVersion` — отзыв JWT при смене пароля), Meeting (owner → User), MeetingFile (meeting → Meeting, uploadedBy → User; `transcriptionStatus` — enum `TranscriptionStatus` (QUEUED/IN_PROGRESS/DONE/ERROR), `null` = транскрибация неприменима (не video/mp4 или audio/mpeg); `transcriptionText` — текст готовой транскрипции)
@@ -113,6 +120,7 @@ nest-cli.json        — sourceRoot: src, deleteOutDir: true
 - Rate limiting — `@nestjs/throttler`, глобально 100 запросов/мин с одного IP (`ThrottlerModule` в `app.module.ts`), на `/auth/register`, `/auth/login` и `PATCH /profile/password` — 10 запросов/мин (`@Throttle`). Выключен при `NODE_ENV=test` (иначе падают e2e).
 - Файлы встреч — `FILE_STORAGE_DIR` (по умолчанию `storage/meeting-files`, путь относительно `process.cwd()` — вне `dist`, не коммитится, см. `.gitignore`) и `FILE_MAX_SIZE_BYTES` (по умолчанию `10485760`, 10 MB). Тип файла — белый список MIME (`ALLOWED_MEETING_FILE_MIME_TYPES`), квота на встречу — `MAX_FILES_PER_MEETING` / `MAX_TOTAL_SIZE_BYTES_PER_MEETING` (константы в `file-storage.config.ts`, не env).
 - Аватары пользователей — `AVATAR_STORAGE_DIR` (по умолчанию `storage/avatars`, та же логика, что и у файлов встреч) и `AVATAR_MAX_SIZE_BYTES` (по умолчанию `5242880`, 5 MB).
+- OpenRouter (`open-router`) — `OPENROUTER_API_KEY` (без дефолта; отсутствие валидируется в `getOpenRouterApiKeyOrThrow()` при вызове `OpenRouterService.ask`). Без него пропускается `open-router.service.spec.ts`.
 
 ## Деплой
 
