@@ -1,9 +1,11 @@
 import { NotFoundException } from '@nestjs/common';
+import { EventBus } from '@nestjs/cqrs';
 import { TranscriptionStatus } from '@prisma/client';
 import { promises as fs } from 'node:fs';
 import { JwtPayload } from '../auth/auth.types';
 import { PrismaService } from '../prisma/prisma.service';
 import { WhisperTranscriptionService } from '../transcription/whisper-transcription.service';
+import { TranscriptionFinishedEvent } from './events/transcription-finished.event';
 import { MeetingFileService } from './meeting-file.service';
 
 jest.mock('node:fs', () => ({
@@ -62,6 +64,7 @@ describe('MeetingFileService', () => {
     };
   };
   let whisperTranscriptionService: { transcribeFile: jest.Mock };
+  let eventBus: { publish: jest.Mock };
   let service: MeetingFileService;
 
   beforeEach(() => {
@@ -77,9 +80,11 @@ describe('MeetingFileService', () => {
       },
     };
     whisperTranscriptionService = { transcribeFile: jest.fn() };
+    eventBus = { publish: jest.fn() };
     service = new MeetingFileService(
       prisma as unknown as PrismaService,
       whisperTranscriptionService as unknown as WhisperTranscriptionService,
+      eventBus as unknown as EventBus,
     );
   });
 
@@ -152,6 +157,7 @@ describe('MeetingFileService', () => {
         where: { id: created.id },
         data: { transcriptionStatus: TranscriptionStatus.DONE, transcriptionText: 'Готовый текст' },
       });
+      expect(eventBus.publish).toHaveBeenCalledWith(new TranscriptionFinishedEvent(meeting.id));
     });
 
     it('файлу не mp4/mp3 транскрибация не назначается (transcriptionStatus = null)', async () => {
@@ -179,6 +185,7 @@ describe('MeetingFileService', () => {
       );
       expect(whisperTranscriptionService.transcribeFile).not.toHaveBeenCalled();
       expect(prisma.meetingFile.update).not.toHaveBeenCalled();
+      expect(eventBus.publish).not.toHaveBeenCalled();
     });
 
     it.each(['application/pdf', 'image/png', 'application/zip'])(
@@ -236,6 +243,7 @@ describe('MeetingFileService', () => {
         where: { id: created.id },
         data: { transcriptionStatus: TranscriptionStatus.ERROR },
       });
+      expect(eventBus.publish).toHaveBeenCalledWith(new TranscriptionFinishedEvent(meeting.id));
     });
   });
 

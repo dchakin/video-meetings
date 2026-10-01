@@ -1,27 +1,29 @@
 import { BadRequestException, ConflictException, NotFoundException } from '@nestjs/common';
 import { MeetingSummaryStatus, Prisma, TranscriptionStatus } from '@prisma/client';
 import { JwtPayload } from '../auth/auth.types';
-import { OpenRouterService } from '../open-router/open-router.service';
 import { PrismaService } from '../prisma/prisma.service';
+import { MeetingSummaryAgentService } from './agent/meeting-summary-agent.service';
 import { MeetingSummaryService } from './meeting-summary.service';
+
+const flushPromises = () => new Promise((resolve) => setImmediate(resolve));
 
 describe('MeetingSummaryService', () => {
   const owner: JwtPayload = { sub: 'owner-id', email: 'owner@example.com', tokenVersion: 0 };
   const stranger: JwtPayload = { sub: 'stranger-id', email: 'x@example.com', tokenVersion: 0 };
   const meeting = { id: 'meeting-1', ownerId: owner.sub, participants: [] };
 
-  const validResponse = JSON.stringify({
+  const agentResult = {
     summary: 'Обсудили релиз',
     actionItems: [
       { description: 'Подготовить релиз', assignee: 'Иван' },
       { description: 'Обновить доку', assignee: null },
     ],
     decisions: ['Релиз в пятницу'],
-  });
+  };
 
   let prisma: {
     meeting: { findUnique: jest.Mock };
-    meetingFile: { findMany: jest.Mock };
+    meetingFile: { findMany: jest.Mock; count: jest.Mock };
     meetingSummary: {
       findUnique: jest.Mock;
       findUniqueOrThrow: jest.Mock;
@@ -30,7 +32,7 @@ describe('MeetingSummaryService', () => {
       update: jest.Mock;
     };
   };
-  let openRouter: { ask: jest.Mock };
+  let summaryAgent: { run: jest.Mock };
   let service: MeetingSummaryService;
 
   beforeEach(() => {
@@ -38,6 +40,7 @@ describe('MeetingSummaryService', () => {
       meeting: { findUnique: jest.fn().mockResolvedValue(meeting) },
       meetingFile: {
         findMany: jest.fn().mockResolvedValue([{ transcriptionText: 'Первая запись' }]),
+        count: jest.fn().mockResolvedValue(0),
       },
       meetingSummary: {
         findUnique: jest.fn().mockResolvedValue(null),
@@ -49,14 +52,14 @@ describe('MeetingSummaryService', () => {
         update: jest.fn().mockResolvedValue(undefined),
       },
     };
-    openRouter = { ask: jest.fn().mockResolvedValue(validResponse) };
+    summaryAgent = { run: jest.fn().mockResolvedValue(agentResult) };
     service = new MeetingSummaryService(
       prisma as unknown as PrismaService,
-      openRouter as unknown as OpenRouterService,
+      summaryAgent as unknown as MeetingSummaryAgentService,
     );
   });
 
-  it('requests only DONE transcriptions and puts their text into the prompt', async () => {
+  it('requests only DONE transcriptions and passes their text to the agent', async () => {
     prisma.meetingFile.findMany.mockResolvedValue([
       { transcriptionText: 'Первая запись' },
       { transcriptionText: 'Вторая запись' },
@@ -69,9 +72,7 @@ describe('MeetingSummaryService', () => {
         where: { meetingId: meeting.id, transcriptionStatus: TranscriptionStatus.DONE },
       }),
     );
-    const [prompt] = openRouter.ask.mock.calls[0] as [string];
-    expect(prompt).toContain('Первая запись');
-    expect(prompt).toContain('Вторая запись');
+    expect(summaryAgent.run).toHaveBeenCalledWith(['Первая запись', 'Вторая запись']);
   });
 
   it('saves a valid response with DONE status', async () => {
@@ -93,9 +94,7 @@ describe('MeetingSummaryService', () => {
 
   it('replaces previous action items and decisions on regeneration', async () => {
     await service.generate(meeting.id);
-    openRouter.ask.mockResolvedValue(
-      JSON.stringify({ summary: 'Новое', actionItems: [], decisions: [] }),
-    );
+    summaryAgent.run.mockResolvedValue({ summary: 'Новое', actionItems: [], decisions: [] });
     await service.generate(meeting.id);
 
     expect(prisma.meetingSummary.update).toHaveBeenLastCalledWith({
@@ -109,8 +108,8 @@ describe('MeetingSummaryService', () => {
     });
   });
 
-  it('marks the summary as ERROR without saving data when the response is invalid', async () => {
-    openRouter.ask.mockResolvedValue('not a json');
+  it('marks the summary as ERROR without saving data when the agent fails validation', async () => {
+    summaryAgent.run.mockRejectedValue(new Error('Агент не записал summary'));
 
     await expect(service.generate(meeting.id)).rejects.toThrow();
 
@@ -122,7 +121,7 @@ describe('MeetingSummaryService', () => {
   });
 
   it('marks the summary as ERROR without saving data when OpenRouter fails', async () => {
-    openRouter.ask.mockRejectedValue(new Error('timeout'));
+    summaryAgent.run.mockRejectedValue(new Error('timeout'));
 
     await expect(service.generate(meeting.id)).rejects.toThrow('timeout');
 
@@ -139,7 +138,7 @@ describe('MeetingSummaryService', () => {
       prisma.meetingSummary.findUnique.mockResolvedValue(stored);
 
       await expect(service.getSummary(owner, meeting.id)).resolves.toBe(stored);
-      expect(openRouter.ask).not.toHaveBeenCalled();
+      expect(summaryAgent.run).not.toHaveBeenCalled();
     });
 
     it('throws NotFound when there is no summary yet', async () => {
@@ -154,7 +153,7 @@ describe('MeetingSummaryService', () => {
 
   describe('startGeneration', () => {
     it('sets IN_PROGRESS and returns without waiting for generation', async () => {
-      openRouter.ask.mockReturnValue(new Promise(() => undefined));
+      summaryAgent.run.mockReturnValue(new Promise(() => undefined));
 
       const result = await service.startGeneration(owner, meeting.id);
 
@@ -185,17 +184,15 @@ describe('MeetingSummaryService', () => {
       );
 
       await expect(service.startGeneration(owner, meeting.id)).rejects.toThrow(ConflictException);
-      expect(openRouter.ask).not.toHaveBeenCalled();
+      expect(summaryAgent.run).not.toHaveBeenCalled();
     });
 
     it('rejects when there are no DONE transcriptions', async () => {
       prisma.meetingFile.findMany.mockResolvedValue([]);
 
-      await expect(service.startGeneration(owner, meeting.id)).rejects.toThrow(
-        BadRequestException,
-      );
+      await expect(service.startGeneration(owner, meeting.id)).rejects.toThrow(BadRequestException);
       expect(prisma.meetingSummary.updateMany).not.toHaveBeenCalled();
-      expect(openRouter.ask).not.toHaveBeenCalled();
+      expect(summaryAgent.run).not.toHaveBeenCalled();
     });
 
     it('allows a restart after ERROR', async () => {
@@ -208,6 +205,67 @@ describe('MeetingSummaryService', () => {
         NotFoundException,
       );
       expect(prisma.meetingSummary.updateMany).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('startAutoGeneration', () => {
+    it('starts generation when all files are transcribed', async () => {
+      await service.startAutoGeneration(meeting.id);
+
+      expect(prisma.meetingSummary.updateMany).toHaveBeenCalledTimes(1);
+      await flushPromises();
+      expect(summaryAgent.run).toHaveBeenCalledWith(['Первая запись']);
+    });
+
+    it('does nothing while some files are still QUEUED or IN_PROGRESS', async () => {
+      prisma.meetingFile.count.mockResolvedValue(1);
+
+      await service.startAutoGeneration(meeting.id);
+
+      expect(prisma.meetingFile.count).toHaveBeenCalledWith({
+        where: {
+          meetingId: meeting.id,
+          transcriptionStatus: {
+            in: [TranscriptionStatus.QUEUED, TranscriptionStatus.IN_PROGRESS],
+          },
+        },
+      });
+      expect(prisma.meetingSummary.updateMany).not.toHaveBeenCalled();
+      expect(summaryAgent.run).not.toHaveBeenCalled();
+    });
+
+    it('does nothing when there are no DONE transcriptions', async () => {
+      prisma.meetingFile.findMany.mockResolvedValue([]);
+
+      await service.startAutoGeneration(meeting.id);
+
+      expect(prisma.meetingSummary.updateMany).not.toHaveBeenCalled();
+    });
+
+    it('reruns generation after the current one when a new transcription arrives meanwhile', async () => {
+      let finishFirstRun!: (value: typeof agentResult) => void;
+      summaryAgent.run.mockReturnValueOnce(
+        new Promise((resolve) => {
+          finishFirstRun = resolve;
+        }),
+      );
+
+      await service.startAutoGeneration(meeting.id);
+      // Генерация уже идёт: второй захват отклоняется с 409 и ставит повторный прогон.
+      prisma.meetingSummary.updateMany.mockResolvedValueOnce({ count: 0 });
+      prisma.meetingSummary.create.mockRejectedValueOnce(
+        new Prisma.PrismaClientKnownRequestError('unique', {
+          code: 'P2002',
+          clientVersion: 'test',
+        }),
+      );
+      await service.startAutoGeneration(meeting.id);
+      expect(summaryAgent.run).toHaveBeenCalledTimes(1);
+
+      finishFirstRun(agentResult);
+      await flushPromises();
+
+      expect(summaryAgent.run).toHaveBeenCalledTimes(2);
     });
   });
 });

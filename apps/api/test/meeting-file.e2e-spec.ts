@@ -5,6 +5,7 @@ import { randomUUID } from 'node:crypto';
 import request from 'supertest';
 import { App } from 'supertest/types';
 import { AppModule } from './../src/app.module';
+import { OpenRouterService } from './../src/open-router/open-router.service';
 import { WhisperTranscriptionService } from './../src/transcription/whisper-transcription.service';
 
 const REGISTER = '/auth/register';
@@ -112,6 +113,9 @@ describe('Meeting files (e2e)', () => {
     })
       .overrideProvider(WhisperTranscriptionService)
       .useValue(mockWhisperTranscriptionService)
+      // Автовыжимка стартует после транскрибации — реальный OpenRouter в этих тестах не нужен.
+      .overrideProvider(OpenRouterService)
+      .useValue({ chat: jest.fn().mockRejectedValue(new Error('OpenRouter отключён в e2e')) })
       .compile();
 
     app = moduleFixture.createNestApplication();

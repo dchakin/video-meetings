@@ -1,4 +1,5 @@
 import { BadRequestException, Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { EventBus } from '@nestjs/cqrs';
 import { Meeting, MeetingFile, TranscriptionStatus } from '@prisma/client';
 import { randomUUID } from 'node:crypto';
 import { promises as fs } from 'node:fs';
@@ -15,6 +16,7 @@ import {
   MAX_TOTAL_SIZE_BYTES_PER_MEETING,
   MEETING_FILE_MIME_TYPE_EXTENSIONS,
 } from './file-storage.config';
+import { TranscriptionFinishedEvent } from './events/transcription-finished.event';
 import { MeetingFileResponse } from './meeting-file.types';
 
 /**
@@ -35,6 +37,7 @@ export class MeetingFileService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly whisperTranscriptionService: WhisperTranscriptionService,
+    private readonly eventBus: EventBus,
   ) {}
 
   async upload(
@@ -150,6 +153,9 @@ export class MeetingFileService {
     } catch (error) {
       await this.updateTranscriptionStatus(file.id, TranscriptionStatus.ERROR);
       throw error;
+    } finally {
+      // Событие и при ERROR: упавший файл может быть последним незавершённым — остальные ждут автовыжимки.
+      this.eventBus.publish(new TranscriptionFinishedEvent(file.meetingId));
     }
   }
 

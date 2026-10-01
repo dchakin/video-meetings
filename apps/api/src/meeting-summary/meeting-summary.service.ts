@@ -14,19 +14,18 @@ import {
 } from '@prisma/client';
 import { JwtPayload } from '../auth/auth.types';
 import { isMeetingMember } from '../meeting/meeting-membership';
-import { OpenRouterService } from '../open-router/open-router.service';
 import { PrismaService } from '../prisma/prisma.service';
-import { MEETING_SUMMARY_MAX_TOKENS, MEETING_SUMMARY_MODEL } from './meeting-summary.constants';
-import { parseMeetingSummaryResponse } from './meeting-summary.parser';
-import { buildMeetingSummaryPrompt } from './meeting-summary.prompt';
+import { MeetingSummaryAgentService } from './agent/meeting-summary-agent.service';
 
 @Injectable()
 export class MeetingSummaryService {
   private readonly logger = new Logger(MeetingSummaryService.name);
+  /** Встречи, у которых во время генерации появились новые транскрипции — после неё нужен повторный прогон. */
+  private readonly meetingsNeedingRerun = new Set<string>();
 
   constructor(
     private readonly prisma: PrismaService,
-    private readonly openRouter: OpenRouterService,
+    private readonly summaryAgent: MeetingSummaryAgentService,
   ) {}
 
   /** Возвращает сохранённую выжимку (без повторной генерации); 404, если встречи или выжимки нет. */
@@ -58,16 +57,44 @@ export class MeetingSummaryService {
     return inProgress;
   }
 
+  /**
+   * Автозапуск после транскрибации: стартует, только когда у встречи не осталось файлов в очереди/в работе
+   * и есть хотя бы одна готовая транскрипция. Если генерация уже идёт — откладывает повторный прогон.
+   */
+  async startAutoGeneration(meetingId: string): Promise<void> {
+    const hasPending = await this.prisma.meetingFile.count({
+      where: {
+        meetingId,
+        transcriptionStatus: {
+          in: [TranscriptionStatus.QUEUED, TranscriptionStatus.IN_PROGRESS],
+        },
+      },
+    });
+    if (hasPending > 0) {
+      return;
+    }
+    const doneTranscriptions = await this.collectDoneTranscriptions(meetingId);
+    if (doneTranscriptions.length === 0) {
+      return;
+    }
+
+    try {
+      await this.claimGeneration(meetingId);
+    } catch (error) {
+      if (error instanceof ConflictException) {
+        this.meetingsNeedingRerun.add(meetingId);
+        return;
+      }
+      throw error;
+    }
+    this.generateInBackground(meetingId);
+  }
+
   /** Генерирует выжимку и сохраняет её; при любом сбое переводит статус в ERROR без записи данных. */
   async generate(meetingId: string): Promise<void> {
     try {
       const transcriptions = await this.collectDoneTranscriptions(meetingId);
-      const rawResponse = await this.openRouter.ask(
-        buildMeetingSummaryPrompt(transcriptions),
-        MEETING_SUMMARY_MODEL,
-        MEETING_SUMMARY_MAX_TOKENS,
-      );
-      const { summary, actionItems, decisions } = parseMeetingSummaryResponse(rawResponse);
+      const { summary, actionItems, decisions } = await this.summaryAgent.run(transcriptions);
 
       // Перезаписывает все поля — повторная генерация полностью заменяет прежнюю выжимку.
       await this.prisma.meetingSummary.update({
@@ -107,10 +134,23 @@ export class MeetingSummaryService {
   }
 
   private generateInBackground(meetingId: string): void {
-    this.generate(meetingId).catch((error) => {
-      // `generate` уже перевела статус в ERROR — здесь только логируем, чтобы отказ промиса не завершил процесс.
+    this.generate(meetingId)
+      .catch((error) => {
+        // `generate` уже перевела статус в ERROR — здесь только логируем, чтобы отказ промиса не завершил процесс.
+        this.logger.error(
+          `Генерация выжимки встречи ${meetingId} не удалась: ${(error as Error).message}`,
+        );
+      })
+      .finally(() => this.rerunIfRequested(meetingId));
+  }
+
+  private rerunIfRequested(meetingId: string): void {
+    if (!this.meetingsNeedingRerun.delete(meetingId)) {
+      return;
+    }
+    this.startAutoGeneration(meetingId).catch((error) => {
       this.logger.error(
-        `Генерация выжимки встречи ${meetingId} не удалась: ${(error as Error).message}`,
+        `Повторный автозапуск выжимки встречи ${meetingId} не удался: ${(error as Error).message}`,
       );
     });
   }
