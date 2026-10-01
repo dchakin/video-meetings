@@ -1,29 +1,28 @@
 <script setup lang="ts">
-import { TranscriptionStatus, type MeetingFile } from '~/composables/useMeetingFiles';
+import { hasPendingTranscription, type MeetingFile } from '~/composables/useMeetingFiles';
 import { MeetingSummaryStatus } from '~/composables/useMeetingSummary';
 
 const props = defineProps<{ meetingId: string; files: MeetingFile[] }>();
 
 const toast = useToast();
-const { summary, isGenerating, generate, refresh } = useMeetingSummary(props.meetingId);
-
-const hasReadyTranscription = computed(() =>
-  props.files.some((file) => file.transcriptionStatus === TranscriptionStatus.DONE),
+const isTranscribing = computed(() => hasPendingTranscription(props.files));
+const { summary, isGenerating, retryGeneration, refresh } = useMeetingSummary(
+  props.meetingId,
+  isTranscribing,
 );
 
 const isDone = computed(() => summary.value?.status === MeetingSummaryStatus.DONE);
 const isError = computed(() => summary.value?.status === MeetingSummaryStatus.ERROR);
+const isWaitingForTranscription = computed(() => isTranscribing.value && !isGenerating.value);
+/** Блок нужен, только когда есть что показать или что ожидать. */
+const isVisible = computed(() => Boolean(summary.value) || isTranscribing.value);
 
-const buttonLabel = computed(() =>
-  isDone.value || isError.value ? 'Перегенерировать выжимку' : 'Сгенерировать выжимку',
-);
+const isRetrying = ref(false);
 
-const isStarting = ref(false);
-
-async function onGenerate() {
-  isStarting.value = true;
+async function onRetry() {
+  isRetrying.value = true;
   try {
-    await generate();
+    await retryGeneration();
   } catch {
     toast.add({
       title: 'Не удалось запустить генерацию',
@@ -33,28 +32,14 @@ async function onGenerate() {
     });
     await refresh().catch(() => undefined);
   } finally {
-    isStarting.value = false;
+    isRetrying.value = false;
   }
 }
 </script>
 
 <template>
-  <section class="mt-10">
-    <div class="flex items-center justify-between gap-3">
-      <h2 class="font-display text-lg font-semibold text-highlighted">Выжимка встречи</h2>
-      <UButton
-        icon="i-lucide-sparkles"
-        size="sm"
-        :label="buttonLabel"
-        :loading="isStarting || isGenerating"
-        :disabled="!hasReadyTranscription || isStarting || isGenerating"
-        @click="onGenerate"
-      />
-    </div>
-
-    <p v-if="!hasReadyTranscription && !isGenerating" class="mt-2 text-sm text-muted">
-      Выжимку можно сгенерировать после готовой транскрибации хотя бы одного файла.
-    </p>
+  <section v-if="isVisible" class="mt-10">
+    <h2 class="font-display text-lg font-semibold text-highlighted">Выжимка встречи</h2>
 
     <UAlert
       v-if="isGenerating"
@@ -62,8 +47,18 @@ async function onGenerate() {
       color="info"
       variant="subtle"
       icon="i-lucide-loader-circle"
-      title="Выжимка генерируется…"
-      description="Статус обновится автоматически."
+      title="Анализируем встречу…"
+      description="Выжимка, задачи и решения появятся автоматически."
+    />
+
+    <UAlert
+      v-else-if="isWaitingForTranscription"
+      class="mt-4"
+      color="neutral"
+      variant="subtle"
+      icon="i-lucide-audio-lines"
+      title="Ждём завершения транскрибации"
+      description="Как только файлы будут расшифрованы, мы подготовим выжимку, задачи и решения."
     />
 
     <UAlert
@@ -72,8 +67,20 @@ async function onGenerate() {
       color="error"
       variant="subtle"
       icon="i-lucide-circle-alert"
-      title="Не удалось сгенерировать выжимку"
-      description="Попробуйте перегенерировать её ещё раз."
+      title="Не удалось подготовить выжимку"
+      description="Попробуйте ещё раз."
+      :actions="[
+        {
+          label: 'Повторить',
+          icon: 'i-lucide-refresh-cw',
+          color: 'error',
+          variant: 'outline',
+          size: 'sm',
+          loading: isRetrying,
+          disabled: isRetrying,
+          onClick: onRetry,
+        },
+      ]"
     />
 
     <div v-else-if="isDone && summary" class="mt-4 space-y-6">

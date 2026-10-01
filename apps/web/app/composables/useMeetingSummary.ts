@@ -7,7 +7,7 @@ export enum MeetingSummaryStatus {
   ERROR = 'ERROR',
 }
 
-/** Интервал опроса выжимки, пока она генерируется. */
+/** Интервал опроса выжимки, пока идёт транскрибация/генерация. */
 const SUMMARY_POLL_INTERVAL_MS = 3000;
 
 const HTTP_NOT_FOUND = 404;
@@ -30,8 +30,17 @@ export interface MeetingSummary {
   updatedAt: string;
 }
 
-/** Загрузка выжимки встречи, ручной запуск генерации и опрос, пока статус «в процессе». */
-export function useMeetingSummary(meetingId: string) {
+/**
+ * Сколько ждать автозапуска генерации после завершения транскрибации: выжимка стартует на бэкенде
+ * сама, но если готовых транскрипций нет (все упали) — статус так и не появится.
+ */
+const AUTO_START_WAIT_MS = 15000;
+
+/**
+ * Загрузка выжимки встречи. Генерацию запускает бэкенд сам после транскрибации, поэтому опрос идёт,
+ * пока транскрибация не завершена, пока ждём автозапуска и пока статус «в процессе».
+ */
+export function useMeetingSummary(meetingId: string, isTranscribing: Ref<boolean>) {
   const api = useApi();
 
   const { data: summary, refresh } = useAsyncData(
@@ -49,9 +58,27 @@ export function useMeetingSummary(meetingId: string) {
   );
 
   const isGenerating = computed(() => summary.value?.status === MeetingSummaryStatus.IN_PROGRESS);
+  const isAwaitingAutoStart = ref(false);
+  let updatedAtBeforeWait: string | null = null;
+  let awaitTimeoutId: ReturnType<typeof setTimeout> | null = null;
 
-  /** Запускает генерацию; ответ API (статус «в процессе») сразу попадает в состояние. */
-  async function generate() {
+  function stopAwaiting() {
+    isAwaitingAutoStart.value = false;
+    if (awaitTimeoutId !== null) {
+      clearTimeout(awaitTimeoutId);
+      awaitTimeoutId = null;
+    }
+  }
+
+  function startAwaiting() {
+    if (!import.meta.client) return;
+    updatedAtBeforeWait = summary.value?.updatedAt ?? null;
+    isAwaitingAutoStart.value = true;
+    awaitTimeoutId = setTimeout(stopAwaiting, AUTO_START_WAIT_MS);
+  }
+
+  /** Повторно запускает генерацию (после ошибки); ответ API (статус «в процессе») сразу попадает в состояние. */
+  async function retryGeneration() {
     summary.value = await api<MeetingSummary>(`/meetings/${meetingId}/summary`, {
       method: 'POST',
     });
@@ -66,23 +93,41 @@ export function useMeetingSummary(meetingId: string) {
     }
   }
 
+  const shouldPoll = computed(
+    () => isTranscribing.value || isGenerating.value || isAwaitingAutoStart.value,
+  );
+
+  watch(isTranscribing, (transcribing, wasTranscribing) => {
+    if (wasTranscribing && !transcribing) startAwaiting();
+  });
+
+  // Автозапуск замечен (идёт генерация или выжимка обновилась) — дальше опрашиваем по статусу.
+  watch(summary, (current) => {
+    if (!isAwaitingAutoStart.value) return;
+    if (current?.status === MeetingSummaryStatus.IN_PROGRESS) stopAwaiting();
+    else if (current && current.updatedAt !== updatedAtBeforeWait) stopAwaiting();
+  });
+
   watch(
-    isGenerating,
-    (generating) => {
+    shouldPoll,
+    (polling) => {
       // Опрос нужен только в браузере: на сервере `setInterval` в Nuxt 4.5+ выбрасывает ошибку.
       if (!import.meta.client) return;
-      if (generating && intervalId === null) {
+      if (polling && intervalId === null) {
         intervalId = setInterval(
           () => void refresh().catch(() => undefined),
           SUMMARY_POLL_INTERVAL_MS,
         );
-      } else if (!generating) {
+      } else if (!polling) {
         stopPolling();
       }
     },
     { immediate: true },
   );
-  onUnmounted(stopPolling);
+  onUnmounted(() => {
+    stopPolling();
+    stopAwaiting();
+  });
 
-  return { summary, isGenerating, generate, refresh };
+  return { summary, isGenerating, retryGeneration, refresh };
 }

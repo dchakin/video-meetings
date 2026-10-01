@@ -24,7 +24,7 @@ export interface MeetingFile {
 }
 
 /** Есть ли среди файлов хотя бы один с незавершённой транскрибацией. */
-function hasPendingTranscription(files: MeetingFile[]): boolean {
+export function hasPendingTranscription(files: MeetingFile[]): boolean {
   return files.some(
     (file) =>
       file.transcriptionStatus === TranscriptionStatus.QUEUED ||
